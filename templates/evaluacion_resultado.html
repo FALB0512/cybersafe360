@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Resultado de evaluación | CyberSafe 360{% endblock %}
+{% block page_title %}Resultado de evaluación{% endblock %}
+
+{% block content %}
+<div class="client-header">
+    <div>
+        <div class="small text-secondary">Organización</div>
+        <h3 class="mb-1">{{ evaluacion['razon_social'] }}</h3>
+        <div class="text-secondary">Evaluación realizada el {{ evaluacion['fecha'] }}</div>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('evaluaciones') }}">Volver al historial</a>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-4">
+        <div class="score-card h-100">
+            <div class="small text-secondary">Índice CyberSafe calculado</div>
+            <div class="score-number">{{ evaluacion['puntaje'] }}</div>
+            <div class="score-label">sobre 100</div>
+            <span class="risk-pill risk-{{ evaluacion['nivel']|lower|replace('í','i')|replace('ó','o') }}">{{ evaluacion['nivel'] }}</span>
+            <p class="text-secondary mt-3 mb-0">Resultado derivado de las respuestas registradas, no de un puntaje digitado manualmente.</p>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="panel-card h-100">
+            <div class="panel-head"><div><h5>Resultado por dominio</h5><div class="small text-secondary">Porcentaje de cumplimiento calculado</div></div></div>
+            {% for d in dominios %}
+            <div class="domain-row">
+                <div class="d-flex justify-content-between"><span>{{ d['dominio'] }}</span><strong>{{ d['pct']|int }}%</strong></div>
+                <div class="progress mt-2"><div class="progress-bar" style="width:{{ d['pct'] }}%"></div></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="panel-card mb-4">
+    <div class="panel-head">
+        <div>
+            <h5>Lectura ejecutiva del resultado</h5>
+            <div class="small text-secondary">Interpretación automática para la gerencia</div>
+        </div>
+    </div>
+    <div class="executive-note">
+        <i class="bi bi-lightbulb-fill"></i>
+        <div>
+            La organización obtuvo un índice de <strong>{{ evaluacion['puntaje'] }}/100</strong>,
+            correspondiente a un nivel <strong>{{ evaluacion['nivel'] }}</strong>.
+            {% if evaluacion['puntaje'] < 60 %}
+            Se recomienda priorizar los controles no implementados y definir planes de tratamiento inmediatos para los riesgos de mayor impacto.
+            {% elif evaluacion['puntaje'] < 80 %}
+            Se recomienda fortalecer los dominios con menor porcentaje de cumplimiento y verificar la efectividad de las acciones de mejora.
+            {% else %}
+            El resultado es favorable, pero debe mantenerse un ciclo continuo de revisión, mejora y validación de controles.
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="panel-card">
+    <div class="panel-head">
+        <div><h5>Controles no cumplidos</h5><div class="small text-secondary">Cada incumplimiento genera un hallazgo sugerido.</div></div>
+        <span class="risk-pill risk-alto">{{ no_cumple|length }} hallazgos sugeridos</span>
+    </div>
+
+    {% if no_cumple %}
+    <div class="list-group list-group-flush">
+        {% for c in no_cumple %}
+        <div class="list-group-item px-0 py-3">
+            <div class="small text-primary fw-bold">{{ c['dominio'] }}</div>
+            <div class="fw-semibold">{{ c['pregunta'] }}</div>
+            {% if c['observacion'] %}<div class="small text-secondary mt-1">{{ c['observacion'] }}</div>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="executive-note"><i class="bi bi-check-circle-fill text-success"></i><div>No se registraron controles en estado “No cumple”.</div></div>
+    {% endif %}
+</div>
+{% endblock %}

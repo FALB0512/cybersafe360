@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Hallazgos | CyberSafe 360{% endblock %}
+{% block page_title %}Hallazgos{% endblock %}
+{% block content %}
+<div class="section-actions">
+    <div><h5 class="mb-1">Registro de hallazgos</h5><div class="text-secondary small">Riesgos identificados y priorizados por criticidad.</div></div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#hallazgoModal"><i class="bi bi-plus-lg me-2"></i>Nuevo hallazgo</button>
+</div>
+
+<div class="row g-3">
+{% for h in hallazgos %}
+<div class="col-xl-6">
+<div class="finding-card">
+<div class="d-flex justify-content-between gap-3">
+<div><div class="finding-code">{{ h['codigo'] }}</div><h5 class="mb-1">{{ h['titulo'] }}</h5><div class="small text-secondary">{{ h['razon_social'] }}</div></div>
+<div class="text-end">
+<span class="risk-pill risk-{{ h['criticidad']|lower|replace('í','i') }}">{{ h['criticidad'] }}</span>
+{% if h['estado'] != 'Cerrado' %}
+<form method="post" action="{{ url_for('cerrar_hallazgo', hallazgo_id=h['id']) }}" class="mt-2">
+<button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2 me-1"></i>Cerrar</button>
+</form>
+{% else %}
+<div class="small text-success fw-bold mt-2"><i class="bi bi-check-circle-fill"></i> Mitigado</div>
+{% endif %}
+</div>
+</div>
+<p class="text-secondary mt-3 mb-3">{{ h['descripcion'] }}</p>
+<div class="finding-meta">
+<span>Prob. <strong>{{ h['probabilidad'] }}</strong></span>
+<span>Impacto <strong>{{ h['impacto'] }}</strong></span>
+<span>Riesgo <strong>{{ h['riesgo'] }}/16</strong></span>
+<span>Estado <strong>{{ h['estado'] }}</strong></span>
+{% if h['evaluacion_id'] %}
+<span><i class="bi bi-lightning-charge-fill"></i> Generado desde evaluación</span>
+{% endif %}
+</div>
+<div class="recommendation mt-3"><i class="bi bi-check2-circle"></i><div><strong>Recomendación</strong><br>{{ h['recomendacion'] }}</div></div>
+</div>
+</div>
+{% endfor %}
+</div>
+
+<div class="modal fade" id="hallazgoModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+<form method="post" action="{{ url_for('nuevo_hallazgo') }}">
+<div class="modal-header"><h5 class="modal-title">Nuevo hallazgo</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body">
+<div class="row g-3">
+<div class="col-md-6"><label class="form-label">Empresa</label><select name="empresa_id" class="form-select" required>{% for e in empresas %}<option value="{{ e['id'] }}">{{ e['razon_social'] }}</option>{% endfor %}</select></div>
+<div class="col-md-6"><label class="form-label">Título</label><input name="titulo" class="form-control" required></div>
+<div class="col-12"><label class="form-label">Descripción</label><textarea name="descripcion" class="form-control" rows="3"></textarea></div>
+<div class="col-md-6"><label class="form-label">Probabilidad (1-4)</label><select name="probabilidad" class="form-select">{% for i in range(1,5) %}<option>{{ i }}</option>{% endfor %}</select></div>
+<div class="col-md-6"><label class="form-label">Impacto (1-4)</label><select name="impacto" class="form-select">{% for i in range(1,5) %}<option>{{ i }}</option>{% endfor %}</select></div>
+<div class="col-12"><label class="form-label">Recomendación</label><textarea name="recomendacion" class="form-control" rows="2"></textarea></div>
+</div>
+</div>
+<div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Crear hallazgo</button></div>
+</form></div></div></div>
+{% endblock %}

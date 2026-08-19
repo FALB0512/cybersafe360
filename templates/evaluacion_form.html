@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Nueva evaluación | CyberSafe 360{% endblock %}
+{% block page_title %}Nueva evaluación de ciberseguridad{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ url_for('guardar_evaluacion') }}">
+<div class="panel-card mb-4">
+    <div class="row g-3 align-items-end">
+        <div class="col-lg-8">
+            <label class="form-label">Empresa</label>
+            <select class="form-select" name="empresa_id" required>
+                {% for e in empresas %}
+                <option value="{{ e['id'] }}">{{ e['razon_social'] }} · {{ e['sector'] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-4">
+            <label class="form-label">Fecha</label>
+            <input type="date" class="form-control" name="fecha">
+        </div>
+    </div>
+</div>
+
+<div class="assessment-intro mb-4">
+    <div>
+        <div class="eyebrow">METODOLOGÍA DEL PMV</div>
+        <h4 class="mb-1">24 controles · 6 dominios</h4>
+        <p class="text-secondary mb-0">Cumple = 2 puntos · Parcial = 1 punto · No cumple = 0 puntos.</p>
+    </div>
+    <div class="assessment-score-help">
+        <strong>El sistema calcula automáticamente</strong><br>
+        Índice, nivel y resultados por dominio.
+    </div>
+</div>
+
+{% for dominio, controles in grupos.items() %}
+<div class="panel-card mb-4">
+    <div class="panel-head">
+        <div>
+            <div class="domain-kicker">DOMINIO {{ loop.index }}</div>
+            <h5>{{ dominio }}</h5>
+        </div>
+        <span class="control-count">{{ controles|length }} controles</span>
+    </div>
+
+    {% for c in controles %}
+    <div class="control-item">
+        <div class="control-question">
+            <span class="control-num">{{ loop.index }}</span>
+            <div>
+                <strong>{{ c['pregunta'] }}</strong>
+                <textarea class="form-control form-control-sm mt-2" rows="1" name="obs_{{ c['id'] }}" placeholder="Observación o evidencia (opcional)"></textarea>
+            </div>
+        </div>
+
+        <div class="control-options">
+            <label class="option-card option-good">
+                <input type="radio" name="control_{{ c['id'] }}" value="2" required>
+                <span><i class="bi bi-check-circle-fill"></i> Cumple</span>
+            </label>
+            <label class="option-card option-partial">
+                <input type="radio" name="control_{{ c['id'] }}" value="1">
+                <span><i class="bi bi-dash-circle-fill"></i> Parcial</span>
+            </label>
+            <label class="option-card option-bad">
+                <input type="radio" name="control_{{ c['id'] }}" value="0">
+                <span><i class="bi bi-x-circle-fill"></i> No cumple</span>
+            </label>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+
+<div class="evaluation-submit">
+    <div>
+        <strong>Finalizar diagnóstico</strong>
+        <div class="small text-secondary">Los controles en “No cumple” generarán hallazgos sugeridos automáticamente.</div>
+    </div>
+    <button class="btn btn-primary btn-lg">
+        <i class="bi bi-calculator me-2"></i>Calcular índice CyberSafe
+    </button>
+</div>
+</form>
+{% endblock %}
