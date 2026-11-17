@@ -1,4 +1,4 @@
-# CyberSafe 360 — PMV v4
+# TotalSecurity — PMV v4
 
 Versión universitaria funcional de una plataforma de gestión de riesgo cibernético para PYMES.
 
@@ -6,7 +6,7 @@ Versión universitaria funcional de una plataforma de gestión de riesgo cibern�
 
 - Corrige la barra “Finalizar diagnóstico” para que no tape controles durante la evaluación.
 - Mantiene 24 controles distribuidos en 6 dominios.
-- Calcula automáticamente el Índice CyberSafe y el nivel de riesgo.
+- Calcula automáticamente el Índice TotalSecurity y el nivel de riesgo.
 - Calcula resultados por dominio.
 - Los controles “No cumple” generan hallazgos automáticamente.
 - Cada control incumplido ahora genera una recomendación específica, no genérica.
@@ -16,8 +16,8 @@ Versión universitaria funcional de una plataforma de gestión de riesgo cibern�
 
 ## Credenciales
 
-Correo: `admin@cybersafe360.com`  
-Contraseña: `CyberSafe360!`
+Correo: `admin@totalsecurity.com`  
+Contraseña: `TotalSecurity360!`
 
 ## Ejecutar en GitHub Codespaces
 
@@ -37,4 +37,4 @@ python app.py
 
 ## Nota metodológica
 
-El Índice CyberSafe es una metodología propia del PMV universitario. No representa por sí mismo una certificación ISO, NIST, CIS u otro estándar.
+El Índice TotalSecurity es una metodología propia del PMV universitario. No representa por sí mismo una certificación ISO, NIST, CIS u otro estándar.

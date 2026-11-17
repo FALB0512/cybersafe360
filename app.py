@@ -11,9 +11,9 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "cybersafe360.db"
 
 DEMO_USER = {
-    "email": "admin@cybersafe360.com",
-    "password": "CyberSafe360!",
-    "name": "Administrador CyberSafe",
+    "email": "admin@totalsecurity.com",
+    "password": "TotalSecurity360!",
+    "name": "Administrador TotalSecurity",
     "role": "Consultor"
 }
 
@@ -208,10 +208,10 @@ def init_db():
         empresa_id = cur.lastrowid
 
         evaluaciones = [
-            (empresa_id, "2026-05-15", 48, "Alto", "Administrador CyberSafe", "Evaluación histórica de demostración"),
-            (empresa_id, "2026-06-15", 53, "Alto", "Administrador CyberSafe", "Evaluación histórica de demostración"),
-            (empresa_id, "2026-07-15", 58, "Alto", "Administrador CyberSafe", "Evaluación histórica de demostración"),
-            (empresa_id, "2026-08-15", 63, "Medio", "Administrador CyberSafe", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-05-15", 48, "Alto", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-06-15", 53, "Alto", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-07-15", 58, "Alto", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-08-15", 63, "Medio", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
         ]
         cur.executemany("""
         INSERT INTO evaluaciones (empresa_id, fecha, puntaje, nivel, responsable, observacion)
@@ -504,7 +504,7 @@ def guardar_evaluacion():
     conn.commit()
     conn.close()
 
-    flash(f"Evaluación completada. Índice CyberSafe: {puntaje}/100 · Nivel {nivel}.", "success")
+    flash(f"Evaluación completada. Índice TotalSecurity: {puntaje}/100 · Nivel {nivel}.", "success")
     return redirect(url_for("resultado_evaluacion", evaluacion_id=evaluacion_id))
 
 

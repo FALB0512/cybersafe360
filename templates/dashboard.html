@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard | CyberSafe 360{% endblock %}
+{% block title %}Dashboard | TotalSecurity{% endblock %}
 {% block page_title %}Dashboard ejecutivo{% endblock %}
 
 {% block content %}
@@ -145,7 +145,7 @@ new Chart(ctx, {
     data: {
         labels: [{% for e in evaluaciones %}"{{ e['fecha'][5:7] }}/{{ e['fecha'][0:4] }}"{% if not loop.last %},{% endif %}{% endfor %}],
         datasets: [{
-            label: 'Índice CyberSafe',
+            label: 'Índice TotalSecurity',
             data: [{% for e in evaluaciones %}{{ e['puntaje'] }}{% if not loop.last %},{% endif %}{% endfor %}],
             tension: 0.35,
             fill: true,

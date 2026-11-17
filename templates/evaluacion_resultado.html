@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Resultado de evaluación | CyberSafe 360{% endblock %}
+{% block title %}Resultado de evaluación | TotalSecurity{% endblock %}
 {% block page_title %}Resultado de evaluación{% endblock %}
 
 {% block content %}
@@ -15,7 +15,7 @@
 <div class="row g-4 mb-4">
     <div class="col-lg-4">
         <div class="score-card h-100">
-            <div class="small text-secondary">Índice CyberSafe calculado</div>
+            <div class="small text-secondary">Índice TotalSecurity calculado</div>
             <div class="score-number">{{ evaluacion['puntaje'] }}</div>
             <div class="score-label">sobre 100</div>
             <span class="risk-pill risk-{{ evaluacion['nivel']|lower|replace('í','i')|replace('ó','o') }}">{{ evaluacion['nivel'] }}</span>
