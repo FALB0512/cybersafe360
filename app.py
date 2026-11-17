@@ -364,16 +364,24 @@ def guardar_evaluacion():
     controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
 
     total = 0
-    maximo = len(controles) * 2
     respuestas = []
 
     for c in controles:
         key = f"control_{c['id']}"
-        resultado = int(request.form.get(key, 0))
+        if key not in request.form:
+            continue  # Sin responder: no entra al cálculo ni genera hallazgos.
+        resultado = int(request.form[key])
         total += resultado
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
 
-    puntaje = round((total / maximo) * 100) if maximo else 0
+    if not respuestas:
+        conn.close()
+        flash("Debes responder al menos un control para calcular el índice.", "danger")
+        return redirect(url_for("nueva_evaluacion_form"))
+
+    no_respondidos = len(controles) - len(respuestas)
+    maximo = len(respuestas) * 2
+    puntaje = round((total / maximo) * 100)
     nivel = nivel_desde_puntaje(puntaje)
 
     cur = conn.cursor()
@@ -422,7 +430,8 @@ def guardar_evaluacion():
     conn.commit()
     conn.close()
 
-    flash(f"Evaluación completada. Índice TotalSecurity: {puntaje}/100 · Nivel {nivel}.", "success")
+    aviso = f" {no_respondidos} control(es) sin responder no fueron considerados." if no_respondidos else ""
+    flash(f"Evaluación completada. Índice TotalSecurity: {puntaje}/100 · Nivel {nivel}.{aviso}", "success")
     return redirect(url_for("resultado_evaluacion", evaluacion_id=evaluacion_id))
 
 
