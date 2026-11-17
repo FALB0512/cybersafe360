@@ -83,7 +83,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-s
     width:28px;height:28px;border-radius:8px;background:#eff4ff;color:var(--primary);
     display:grid;place-items:center;font-size:12px;font-weight:900
 }
-.control-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.control-options{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .option-card{cursor:pointer;margin:0}
 .option-card input{display:none}
 .option-card span{
@@ -104,3 +104,5 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-s
 .brand-logo{width:44px;height:auto;flex-shrink:0}
 .login-logo{width:100%;max-width:300px;height:auto;border-radius:14px}
 .brand-sub{color:#00b0f0 !important}
+.option-na input:checked + span{background:#f1f5f9;border-color:#94a3b8;color:#475569}
+@media(max-width:1000px){.control-options{grid-template-columns:repeat(2,1fr)}}

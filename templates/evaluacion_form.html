@@ -66,6 +66,10 @@
                 <input type="radio" name="control_{{ c['id'] }}" value="0">
                 <span><i class="bi bi-x-circle-fill"></i> No cumple</span>
             </label>
+            <label class="option-card option-na">
+                <input type="radio" name="control_{{ c['id'] }}" value="na">
+                <span><i class="bi bi-question-circle-fill"></i> Sin evidencia</span>
+            </label>
         </div>
     </div>
     {% endfor %}

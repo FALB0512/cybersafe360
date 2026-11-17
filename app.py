@@ -368,15 +368,16 @@ def guardar_evaluacion():
 
     for c in controles:
         key = f"control_{c['id']}"
-        if key not in request.form:
-            continue  # Sin responder: no entra al cálculo ni genera hallazgos.
+        # Sin responder o sin evidencia: no entra al cálculo ni genera hallazgos.
+        if request.form.get(key, "na") == "na":
+            continue
         resultado = int(request.form[key])
         total += resultado
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
 
     if not respuestas:
         conn.close()
-        flash("Debes responder al menos un control para calcular el índice.", "danger")
+        flash("Debes responder al menos un control con evidencia para calcular el índice.", "danger")
         return redirect(url_for("nueva_evaluacion_form"))
 
     no_respondidos = len(controles) - len(respuestas)
@@ -430,7 +431,7 @@ def guardar_evaluacion():
     conn.commit()
     conn.close()
 
-    aviso = f" {no_respondidos} control(es) sin responder no fueron considerados." if no_respondidos else ""
+    aviso = f" {no_respondidos} control(es) sin responder o sin evidencia no fueron considerados." if no_respondidos else ""
     flash(f"Evaluación completada. Índice TotalSecurity: {puntaje}/100 · Nivel {nivel}.{aviso}", "success")
     return redirect(url_for("resultado_evaluacion", evaluacion_id=evaluacion_id))
 
