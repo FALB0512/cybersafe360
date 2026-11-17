@@ -1,21 +1,29 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
+import os
 import sqlite3
 from pathlib import Path
 from datetime import date
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = "cybersafe360-demo-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "cambiar-en-produccion")
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "cybersafe360.db"
 
-DEMO_USER = {
-    "email": "admin@totalsecurity.com",
-    "password": "TotalSecurity360!",
-    "name": "Administrador TotalSecurity",
-    "role": "Consultor"
+ROLES = {
+    "admin": "Administrador",
+    "consultor": "Consultor",
+    "cliente": "Cliente",
 }
+EDITORES = ("admin", "consultor")
+
+USUARIOS_SEMILLA = [
+    ("Administrador TotalSecurity", "admin@totalsecurity.com", "TotalSecurity360!", "admin"),
+    ("Consultor TotalSecurity", "consultor@totalsecurity.com", "Consultor360!", "consultor"),
+    ("Cliente Ingeniería Andina", "cliente@totalsecurity.com", "Cliente360!", "cliente"),
+]
 
 from datos import CONTROLES_BASE, RECOMENDACIONES_CONTROLES
 
@@ -112,6 +120,22 @@ def init_db():
         if column not in cols:
             cur.execute(ddl)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        correo TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        rol TEXT NOT NULL,
+        activo INTEGER DEFAULT 1
+    )
+    """)
+    if cur.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0:
+        cur.executemany(
+            "INSERT INTO usuarios (nombre, correo, password_hash, rol) VALUES (?, ?, ?, ?)",
+            [(n, c, generate_password_hash(pw), r) for n, c, pw, r in USUARIOS_SEMILLA]
+        )
+
     if cur.execute("SELECT COUNT(*) FROM controles").fetchone()[0] == 0:
         cur.executemany("INSERT INTO controles (dominio, pregunta, activo) VALUES (?, ?, 1)", CONTROLES_BASE)
 
@@ -185,13 +209,29 @@ def init_db():
     conn.close()
 
 
+def roles_required(*roles):
+    def decorador(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = session.get("user")
+            if not user:
+                return redirect(url_for("login"))
+            if roles and user["rol"] not in roles:
+                flash("Tu perfil no tiene acceso a esta sección.", "danger")
+                return redirect(url_for("dashboard"))
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorador
+
+
 def login_required(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if "user" not in session:
-            return redirect(url_for("login"))
-        return fn(*args, **kwargs)
-    return wrapper
+    return roles_required()(fn)
+
+
+@app.context_processor
+def permisos():
+    rol = session.get("user", {}).get("rol")
+    return {"puede_editar": rol in EDITORES, "es_admin": rol == "admin"}
 
 
 def nivel_desde_puntaje(puntaje):
@@ -228,8 +268,14 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        if email == DEMO_USER["email"] and password == DEMO_USER["password"]:
-            session["user"] = DEMO_USER
+        conn = get_db()
+        u = conn.execute("SELECT * FROM usuarios WHERE correo=? AND activo=1", (email,)).fetchone()
+        conn.close()
+        if u and check_password_hash(u["password_hash"], password):
+            session["user"] = {
+                "id": u["id"], "name": u["nombre"], "email": u["correo"],
+                "rol": u["rol"], "role": ROLES[u["rol"]],
+            }
             return redirect(url_for("dashboard"))
         flash("Correo o contraseña incorrectos.", "danger")
     return render_template("login.html")
@@ -301,7 +347,7 @@ def dashboard():
 
 
 @app.route("/empresas")
-@login_required
+@roles_required(*EDITORES)
 def empresas():
     conn = get_db()
     data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
@@ -310,7 +356,7 @@ def empresas():
 
 
 @app.route("/empresas/nueva", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def nueva_empresa():
     conn = get_db()
     conn.execute("""
@@ -327,7 +373,7 @@ def nueva_empresa():
 
 
 @app.route("/evaluaciones")
-@login_required
+@roles_required(*EDITORES)
 def evaluaciones():
     conn = get_db()
     data = conn.execute("""
@@ -341,7 +387,7 @@ def evaluaciones():
 
 
 @app.route("/evaluaciones/nueva")
-@login_required
+@roles_required(*EDITORES)
 def nueva_evaluacion_form():
     conn = get_db()
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
@@ -355,7 +401,7 @@ def nueva_evaluacion_form():
 
 
 @app.route("/evaluaciones/guardar", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def guardar_evaluacion():
     empresa_id = int(request.form["empresa_id"])
     fecha_eval = request.form.get("fecha") or date.today().isoformat()
@@ -486,7 +532,7 @@ def hallazgos():
 
 
 @app.route("/hallazgos/nuevo", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def nuevo_hallazgo():
     prob = int(request.form["probabilidad"])
     impact = int(request.form["impacto"])
@@ -512,7 +558,7 @@ def nuevo_hallazgo():
 
 
 @app.route("/hallazgos/<int:hallazgo_id>/cerrar", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def cerrar_hallazgo(hallazgo_id):
     conn = get_db()
     conn.execute("UPDATE hallazgos SET estado='Cerrado' WHERE id=?", (hallazgo_id,))
@@ -544,7 +590,7 @@ def planes():
 
 
 @app.route("/planes/nuevo", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def nuevo_plan():
     avance = max(0, min(100, int(request.form.get("avance") or 0)))
     estado = "Completado" if avance == 100 else ("En progreso" if avance > 0 else "Pendiente")
@@ -563,7 +609,7 @@ def nuevo_plan():
 
 
 @app.route("/planes/<int:plan_id>/avance", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def actualizar_avance(plan_id):
     avance = max(0, min(100, int(request.form["avance"])))
     estado = "Completado" if avance == 100 else ("En progreso" if avance > 0 else "Pendiente")
@@ -579,7 +625,42 @@ def actualizar_avance(plan_id):
     return redirect(url_for("planes"))
 
 
+@app.route("/usuarios")
+@roles_required("admin")
+def usuarios():
+    conn = get_db()
+    data = conn.execute("SELECT id, nombre, correo, rol, activo FROM usuarios ORDER BY nombre").fetchall()
+    conn.close()
+    return render_template("usuarios.html", usuarios=data, roles=ROLES)
+
+
+@app.route("/usuarios/nuevo", methods=["POST"])
+@roles_required("admin")
+def nuevo_usuario():
+    nombre = request.form.get("nombre", "").strip()
+    correo = request.form.get("correo", "").strip().lower()
+    password = request.form.get("password", "")
+    rol = request.form.get("rol", "")
+    if not (nombre and correo and len(password) >= 8 and rol in ROLES):
+        flash("Revisa los datos: contraseña de mínimo 8 caracteres y perfil válido.", "danger")
+        return redirect(url_for("usuarios"))
+
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO usuarios (nombre, correo, password_hash, rol) VALUES (?, ?, ?, ?)",
+            (nombre, correo, generate_password_hash(password), rol)
+        )
+        conn.commit()
+        flash("Usuario creado correctamente.", "success")
+    except sqlite3.IntegrityError:
+        flash("Ya existe un usuario con ese correo.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("usuarios"))
+
+
 init_db()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=os.environ.get("FLASK_DEBUG") == "1")

@@ -21,7 +21,15 @@ python app.py
 
 Luego abre `http://localhost:5000`.
 
-Credenciales de demostración: `admin@totalsecurity.com` / `TotalSecurity360!`
+## Perfiles de acceso
+
+| Perfil | Correo | Contraseña | Acceso |
+|---|---|---|---|
+| Administrador | `admin@totalsecurity.com` | `TotalSecurity360!` | Todo, incluido Usuarios y perfiles |
+| Consultor | `consultor@totalsecurity.com` | `Consultor360!` | Empresas, evaluaciones, hallazgos y plan |
+| Cliente | `cliente@totalsecurity.com` | `Cliente360!` | Solo lectura: dashboard, hallazgos y plan |
+
+Estas contraseñas son de demostración. Cambia `SECRET_KEY` y las contraseñas antes de usar la herramienta con datos reales. Para activar el modo depuración usa `FLASK_DEBUG=1`.
 
 ## Iniciar con datos limpios
 

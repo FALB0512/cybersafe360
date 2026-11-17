@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}TotalSecurity{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo-shield.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -11,57 +15,67 @@
 <body>
 <div class="app-shell">
     <aside class="sidebar">
-        <div class="brand">
-            <img class="brand-logo" src="{{ url_for('static', filename='img/logo-shield.png') }}" alt="TotalSecurity">
-            <div>
-                <div class="brand-name">TotalSecurity</div>
-                <div class="brand-sub">Risk Management</div>
-            </div>
-        </div>
+        <a class="brand" href="{{ url_for('dashboard') }}">
+            <span class="brand-tile"><img src="{{ url_for('static', filename='img/logo-shield.png') }}" alt=""></span>
+            <span class="brand-text">
+                <span class="brand-total">Total</span>
+                <span class="brand-security">Security</span>
+                <span class="brand-sub">Risk Management</span>
+            </span>
+        </a>
 
-        <nav class="nav flex-column mt-4">
+        <div class="nav-label">Gestión</div>
+        <nav class="nav flex-column">
             <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                <i class="bi bi-grid-1x2-fill"></i> Dashboard
+                <i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span>
             </a>
+            {% if puede_editar %}
             <a class="nav-link {% if request.endpoint == 'empresas' %}active{% endif %}" href="{{ url_for('empresas') }}">
-                <i class="bi bi-buildings"></i> Empresas
+                <i class="bi bi-buildings"></i><span>Empresas</span>
             </a>
-            <a class="nav-link {% if request.endpoint == 'evaluaciones' %}active{% endif %}" href="{{ url_for('evaluaciones') }}">
-                <i class="bi bi-clipboard2-check"></i> Evaluaciones
+            <a class="nav-link {% if request.endpoint in ('evaluaciones', 'nueva_evaluacion_form') %}active{% endif %}" href="{{ url_for('evaluaciones') }}">
+                <i class="bi bi-clipboard2-check"></i><span>Evaluaciones</span>
             </a>
+            {% endif %}
             <a class="nav-link {% if request.endpoint == 'hallazgos' %}active{% endif %}" href="{{ url_for('hallazgos') }}">
-                <i class="bi bi-exclamation-triangle"></i> Hallazgos
+                <i class="bi bi-exclamation-triangle"></i><span>Hallazgos</span>
             </a>
             <a class="nav-link {% if request.endpoint == 'planes' %}active{% endif %}" href="{{ url_for('planes') }}">
-                <i class="bi bi-list-check"></i> Plan de acción
+                <i class="bi bi-list-check"></i><span>Plan de acción</span>
             </a>
+            {% if es_admin %}
+            <div class="nav-label">Administración</div>
+            <a class="nav-link {% if request.endpoint == 'usuarios' %}active{% endif %}" href="{{ url_for('usuarios') }}">
+                <i class="bi bi-people-fill"></i><span>Usuarios y perfiles</span>
+            </a>
+            {% endif %}
         </nav>
 
         <div class="sidebar-footer">
             <div class="user-card">
                 <div class="avatar">{{ session['user']['name'][0] }}</div>
                 <div class="min-w-0">
-                    <div class="user-name text-truncate">{{ session['user']['name'] }}</div>
-                    <div class="user-role">{{ session['user']['role'] }}</div>
+                    <div class="user-name">{{ session['user']['name'] }}</div>
+                    <div class="user-role">Perfil: {{ session['user']['role'] }}</div>
                 </div>
             </div>
             <a href="{{ url_for('logout') }}" class="logout-link">
-                <i class="bi bi-box-arrow-left"></i> Cerrar sesión
+                <i class="bi bi-box-arrow-left"></i><span>Cerrar sesión</span>
             </a>
         </div>
     </aside>
 
     <main class="main-content">
-        <div class="topbar">
+        <header class="topbar">
             <div>
-                <div class="eyebrow">TOTALSECURITY</div>
+                <div class="eyebrow">Panel de control</div>
                 <h1 class="page-title mb-0">{% block page_title %}{% endblock %}</h1>
             </div>
             <div class="topbar-badge">
                 <i class="bi bi-shield-check"></i>
-                PMV universitario
+                {{ session['user']['role'] }}
             </div>
-        </div>
+        </header>
 
         <div class="content-wrap">
             {% with messages = get_flashed_messages(with_categories=true) %}

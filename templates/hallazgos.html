@@ -4,7 +4,9 @@
 {% block content %}
 <div class="section-actions">
     <div><h5 class="mb-1">Registro de hallazgos</h5><div class="text-secondary small">Riesgos identificados y priorizados por criticidad.</div></div>
+    {% if puede_editar %}
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#hallazgoModal"><i class="bi bi-plus-lg me-2"></i>Nuevo hallazgo</button>
+    {% endif %}
 </div>
 
 <div class="row g-3">
@@ -15,7 +17,7 @@
 <div><div class="finding-code">{{ h['codigo'] }}</div><h5 class="mb-1">{{ h['titulo'] }}</h5><div class="small text-secondary">{{ h['razon_social'] }}</div></div>
 <div class="text-end">
 <span class="risk-pill risk-{{ h['criticidad']|lower|replace('í','i') }}">{{ h['criticidad'] }}</span>
-{% if h['estado'] != 'Cerrado' %}
+{% if h['estado'] != 'Cerrado' and puede_editar %}
 <form method="post" action="{{ url_for('cerrar_hallazgo', hallazgo_id=h['id']) }}" class="mt-2">
 <button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2 me-1"></i>Cerrar</button>
 </form>
@@ -40,6 +42,7 @@
 {% endfor %}
 </div>
 
+{% if puede_editar %}
 <div class="modal fade" id="hallazgoModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
 <form method="post" action="{{ url_for('nuevo_hallazgo') }}">
 <div class="modal-header"><h5 class="modal-title">Nuevo hallazgo</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -55,4 +58,5 @@
 </div>
 <div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Crear hallazgo</button></div>
 </form></div></div></div>
+{% endif %}
 {% endblock %}
