@@ -1,34 +1,29 @@
-# TotalSecurity — PMV v4
+# TotalSecurity — PMV
 
-Versión universitaria funcional de una plataforma de gestión de riesgo cibernético para PYMES.
+Plataforma de gestión de riesgo cibernético para PYMES: evaluación de 24 controles en 6 dominios, cálculo del Índice TotalSecurity, hallazgos automáticos y plan de acción.
 
-## Mejoras v4
+## Estructura
 
-- Corrige la barra “Finalizar diagnóstico” para que no tape controles durante la evaluación.
-- Mantiene 24 controles distribuidos en 6 dominios.
-- Calcula automáticamente el Índice TotalSecurity y el nivel de riesgo.
-- Calcula resultados por dominio.
-- Los controles “No cumple” generan hallazgos automáticamente.
-- Cada control incumplido ahora genera una recomendación específica, no genérica.
-- Los hallazgos muestran si fueron generados desde una evaluación.
-- Se agregó lectura ejecutiva automática del resultado para apoyar la sustentación.
-- Cierre de hallazgos y actualización de la North Star Metric.
+```
+app.py            Rutas Flask, lógica de evaluación y base de datos SQLite
+datos.py          Catálogo de controles y recomendaciones
+templates/        Plantillas HTML (Jinja2)
+static/css/       Estilos
+static/img/       Logos
+```
 
-## Credenciales
-
-Correo: `admin@totalsecurity.com`  
-Contraseña: `TotalSecurity360!`
-
-## Ejecutar en GitHub Codespaces
+## Ejecutar
 
 ```bash
 pip install -r requirements.txt
 python app.py
 ```
 
-Luego abre el puerto 5000.
+Luego abre `http://localhost:5000`.
 
-## Para iniciar limpio
+Credenciales de demostración: `admin@totalsecurity.com` / `TotalSecurity360!`
+
+## Iniciar con datos limpios
 
 ```bash
 rm cybersafe360.db
