@@ -24,13 +24,7 @@
 <div><div class="finding-code">{{ h['codigo'] }}</div><h5 class="mb-1">{{ h['titulo'] }}</h5><span class="company-tag">{{ h['razon_social'] }}</span></div>
 <div class="text-end">
 <span class="risk-pill risk-{{ h['criticidad']|lower|replace('í','i') }}">{{ h['criticidad'] }}</span>
-{% if h['estado'] != 'Cerrado' and puede_editar %}
-<form method="post" action="{{ url_for('cerrar_hallazgo', hallazgo_id=h['id']) }}" class="mt-2">
-<button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2 me-1"></i>Cerrar</button>
-</form>
-{% else %}
-<div class="small text-success fw-bold mt-2"><i class="bi bi-check-circle-fill"></i> Mitigado</div>
-{% endif %}
+{% if h['estado'] == 'Cerrado' %}<div class="small text-success fw-bold mt-2"><i class="bi bi-check-circle-fill"></i> Mitigado</div>{% else %}<div class="small text-secondary fw-bold mt-2">Abierto</div>{% endif %}
 </div>
 </div>
 <p class="text-secondary mt-3 mb-3">{{ h['descripcion'] }}</p>
@@ -44,6 +38,25 @@
 {% endif %}
 </div>
 <div class="recommendation mt-3"><i class="bi bi-check2-circle"></i><div><strong>Recomendación</strong><br>{{ h['recomendacion'] }}</div></div>
+<div class="verificacion mt-3">
+<div class="small fw-bold mb-2"><i class="bi bi-clipboard-check"></i> Verificación de la recomendación</div>
+{% if puede_editar %}
+<form method="post" action="{{ url_for('verificar_hallazgo', hallazgo_id=h['id']) }}">
+<input type="hidden" name="empresa" value="{{ empresa_id or '' }}">
+<select name="cumplimiento" class="form-select form-select-sm mb-2">
+<option value="">Sin verificar</option>
+{% for c in cumplimientos %}<option value="{{ c }}" {% if h['cumplimiento'] == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+</select>
+<textarea name="observacion" rows="2" class="form-control form-control-sm mb-2" placeholder="¿Se cumplió la recomendación a cabalidad? Describe la evidencia.">{{ h['observacion_verificacion'] or '' }}</textarea>
+<div class="d-flex gap-2">
+<button name="accion" value="guardar" class="btn btn-sm btn-outline-primary">Guardar observación</button>
+{% if h['estado'] != 'Cerrado' %}<button name="accion" value="cerrar" class="btn btn-sm btn-success"><i class="bi bi-check2 me-1"></i>Cerrar hallazgo</button>{% endif %}
+</div>
+</form>
+{% else %}
+<div class="small text-secondary">{{ h['cumplimiento'] or 'Sin verificar' }}{% if h['observacion_verificacion'] %} · {{ h['observacion_verificacion'] }}{% endif %}</div>
+{% endif %}
+</div>
 </div>
 </div>
 {% endfor %}

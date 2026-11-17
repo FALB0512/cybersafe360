@@ -115,6 +115,8 @@ def init_db():
         ("evaluaciones", "observacion", "ALTER TABLE evaluaciones ADD COLUMN observacion TEXT"),
         ("hallazgos", "control_id", "ALTER TABLE hallazgos ADD COLUMN control_id INTEGER"),
         ("hallazgos", "evaluacion_id", "ALTER TABLE hallazgos ADD COLUMN evaluacion_id INTEGER"),
+        ("hallazgos", "observacion_verificacion", "ALTER TABLE hallazgos ADD COLUMN observacion_verificacion TEXT"),
+        ("hallazgos", "cumplimiento", "ALTER TABLE hallazgos ADD COLUMN cumplimiento TEXT"),
     ]:
         cols = [r["name"] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
         if column not in cols:
@@ -291,7 +293,11 @@ def logout():
 @login_required
 def dashboard():
     conn = get_db()
-    empresa = conn.execute("SELECT * FROM empresas ORDER BY id LIMIT 1").fetchone()
+    empresa_id = request.args.get("empresa", type=int)
+    empresa = conn.execute("SELECT * FROM empresas WHERE id=?", (empresa_id,)).fetchone() if empresa_id else None
+    if not empresa:
+        empresa = conn.execute("SELECT * FROM empresas ORDER BY id LIMIT 1").fetchone()
+    empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
     evaluaciones = conn.execute("""
         SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha, id
     """, (empresa["id"],)).fetchall()
@@ -342,7 +348,8 @@ def dashboard():
         "dashboard.html", empresa=empresa, evaluaciones=evaluaciones, ultima=ultima,
         criticos=counts["Crítico"], altos=counts["Alto"], medios=counts["Medio"],
         promedio_avance=round(promedio_avance),
-        dominios=dominios, nsm_total=nsm_total, nsm_mitigados=nsm_mitigados
+        dominios=dominios, nsm_total=nsm_total, nsm_mitigados=nsm_mitigados,
+        empresas=empresas_data
     )
 
 
@@ -562,7 +569,8 @@ def hallazgos():
     """, (empresa_id, empresa_id)).fetchall()
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
     conn.close()
-    return render_template("hallazgos.html", hallazgos=data, empresas=empresas_data, empresa_id=empresa_id)
+    return render_template("hallazgos.html", hallazgos=data, empresas=empresas_data, empresa_id=empresa_id,
+                           cumplimientos=CUMPLIMIENTOS)
 
 
 @app.route("/hallazgos/nuevo", methods=["POST"])
@@ -589,6 +597,31 @@ def nuevo_hallazgo():
     conn.close()
     flash(f"Hallazgo {codigo} creado con criticidad {criticidad}.", "success")
     return redirect(url_for("hallazgos"))
+
+
+CUMPLIMIENTOS = ("Cumplió a cabalidad", "Cumplimiento parcial", "No cumplió")
+
+
+@app.route("/hallazgos/<int:hallazgo_id>/verificar", methods=["POST"])
+@roles_required(*EDITORES)
+def verificar_hallazgo(hallazgo_id):
+    observacion = request.form.get("observacion", "").strip()
+    cumplimiento = request.form.get("cumplimiento", "")
+    if cumplimiento not in CUMPLIMIENTOS:
+        cumplimiento = None
+    cerrar = request.form.get("accion") == "cerrar"
+    conn = get_db()
+    conn.execute(
+        "UPDATE hallazgos SET observacion_verificacion=?, cumplimiento=? WHERE id=?",
+        (observacion, cumplimiento, hallazgo_id)
+    )
+    if cerrar:
+        conn.execute("UPDATE hallazgos SET estado='Cerrado' WHERE id=?", (hallazgo_id,))
+    conn.commit()
+    conn.close()
+    flash("Verificación guardada." + (" Hallazgo cerrado." if cerrar else ""), "success")
+    empresa_id = request.form.get("empresa", type=int)
+    return redirect(url_for("hallazgos", empresa=empresa_id) if empresa_id else url_for("hallazgos"))
 
 
 @app.route("/hallazgos/<int:hallazgo_id>/cerrar", methods=["POST"])

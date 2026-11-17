@@ -3,6 +3,13 @@
 {% block page_title %}Dashboard ejecutivo{% endblock %}
 
 {% block content %}
+<form method="get" class="d-flex align-items-center gap-2 mb-3">
+    <span class="small fw-bold text-secondary">Empresa</span>
+    <select name="empresa" class="form-select form-select-sm" style="width:auto;min-width:260px" onchange="this.form.submit()">
+        {% for e in empresas %}<option value="{{ e['id'] }}" {% if empresa['id'] == e['id'] %}selected{% endif %}>{{ e['razon_social'] }}</option>{% endfor %}
+    </select>
+    {% if puede_editar %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('empresa_panel', empresa_id=empresa['id']) }}">Abrir panel</a>{% endif %}
+</form>
 <div class="client-header">
     <div>
         <div class="small text-secondary">Empresa evaluada</div>
