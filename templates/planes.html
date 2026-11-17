@@ -2,6 +2,13 @@
 {% block title %}Plan de acción | TotalSecurity{% endblock %}
 {% block page_title %}Plan de acción{% endblock %}
 {% block content %}
+<form method="get" class="d-flex align-items-center gap-2 mb-3">
+    <span class="small fw-bold text-secondary">Empresa</span>
+    <select name="empresa" class="form-select form-select-sm" style="width:auto;min-width:260px" onchange="this.form.submit()">
+        <option value="">Todas las empresas</option>
+        {% for e in empresas %}<option value="{{ e['id'] }}" {% if empresa_id == e['id'] %}selected{% endif %}>{{ e['razon_social'] }}</option>{% endfor %}
+    </select>
+</form>
 <div class="section-actions">
     <div><h5 class="mb-1">Acciones de tratamiento</h5><div class="text-secondary small">Seguimiento de compromisos asociados a hallazgos.</div></div>
     {% if puede_editar %}
@@ -15,7 +22,7 @@
 <tbody>
 {% for p in planes %}
 <tr>
-<td><span class="finding-code">{{ p['codigo'] }}</span><br><span class="small">{{ p['titulo'] }}</span></td>
+<td><span class="finding-code">{{ p['codigo'] }}</span><br><span class="small">{{ p['titulo'] }}</span><br><span class="company-tag">{{ p['razon_social'] }}</span></td>
 <td>{{ p['actividad'] }}</td><td>{{ p['responsable'] or '-' }}</td><td>{{ p['fecha_limite'] or '-' }}</td>
 <td style="min-width:190px">
 {% if puede_editar %}

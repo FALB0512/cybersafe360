@@ -355,6 +355,39 @@ def empresas():
     return render_template("empresas.html", empresas=data)
 
 
+@app.route("/empresas/<int:empresa_id>")
+@roles_required(*EDITORES)
+def empresa_panel(empresa_id):
+    conn = get_db()
+    empresa = conn.execute("SELECT * FROM empresas WHERE id=?", (empresa_id,)).fetchone()
+    if not empresa:
+        conn.close()
+        flash("La empresa no existe.", "danger")
+        return redirect(url_for("empresas"))
+    evaluaciones = conn.execute(
+        "SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha DESC, id DESC", (empresa_id,)
+    ).fetchall()
+    hallazgos_emp = conn.execute("""
+        SELECT * FROM hallazgos WHERE empresa_id=?
+        ORDER BY CASE criticidad WHEN 'Crítico' THEN 1 WHEN 'Alto' THEN 2 WHEN 'Medio' THEN 3 ELSE 4 END, id DESC
+    """, (empresa_id,)).fetchall()
+    planes_emp = conn.execute("""
+        SELECT p.*, h.codigo, h.titulo
+        FROM planes_accion p JOIN hallazgos h ON h.id=p.hallazgo_id
+        WHERE h.empresa_id=? ORDER BY p.fecha_limite
+    """, (empresa_id,)).fetchall()
+    conn.close()
+
+    abiertos = {c: sum(1 for h in hallazgos_emp if h["criticidad"] == c and h["estado"] != "Cerrado")
+                for c in ("Crítico", "Alto", "Medio")}
+    avance = round(sum(p["avance"] for p in planes_emp) / len(planes_emp)) if planes_emp else 0
+    return render_template(
+        "empresa.html", empresa=empresa, ultima=evaluaciones[0] if evaluaciones else None,
+        evaluaciones=evaluaciones, hallazgos=hallazgos_emp, planes=planes_emp,
+        abiertos=abiertos, avance=avance
+    )
+
+
 @app.route("/empresas/nueva", methods=["POST"])
 @roles_required(*EDITORES)
 def nueva_empresa():
@@ -417,8 +450,7 @@ def guardar_evaluacion():
         # Sin responder: no entra al cálculo ni genera hallazgos.
         if key not in request.form:
             continue
-        # "Sin evidencia" cuenta como "No cumple".
-        resultado = 0 if request.form[key] == "na" else int(request.form[key])
+        resultado = int(request.form[key])
         total += resultado
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
 
@@ -520,15 +552,17 @@ def resultado_evaluacion(evaluacion_id):
 @app.route("/hallazgos")
 @login_required
 def hallazgos():
+    empresa_id = request.args.get("empresa", type=int)
     conn = get_db()
     data = conn.execute("""
         SELECT h.*, em.razon_social
         FROM hallazgos h JOIN empresas em ON em.id=h.empresa_id
+        WHERE (? IS NULL OR h.empresa_id=?)
         ORDER BY CASE h.criticidad WHEN 'Crítico' THEN 1 WHEN 'Alto' THEN 2 WHEN 'Medio' THEN 3 ELSE 4 END, h.id DESC
-    """).fetchall()
+    """, (empresa_id, empresa_id)).fetchall()
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
     conn.close()
-    return render_template("hallazgos.html", hallazgos=data, empresas=empresas_data)
+    return render_template("hallazgos.html", hallazgos=data, empresas=empresas_data, empresa_id=empresa_id)
 
 
 @app.route("/hallazgos/nuevo", methods=["POST"])
@@ -571,22 +605,25 @@ def cerrar_hallazgo(hallazgo_id):
 @app.route("/planes")
 @login_required
 def planes():
+    empresa_id = request.args.get("empresa", type=int)
     conn = get_db()
     data = conn.execute("""
         SELECT p.*, h.codigo, h.titulo, h.criticidad, h.estado AS hallazgo_estado, em.razon_social
         FROM planes_accion p
         JOIN hallazgos h ON h.id=p.hallazgo_id
         JOIN empresas em ON em.id=h.empresa_id
+        WHERE (? IS NULL OR h.empresa_id=?)
         ORDER BY p.fecha_limite
-    """).fetchall()
+    """, (empresa_id, empresa_id)).fetchall()
     hallazgos_data = conn.execute("""
         SELECT h.id, h.codigo, h.titulo, em.razon_social
         FROM hallazgos h JOIN empresas em ON em.id=h.empresa_id
         WHERE h.estado!='Cerrado'
         ORDER BY h.id DESC
     """).fetchall()
+    empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
     conn.close()
-    return render_template("planes.html", planes=data, hallazgos=hallazgos_data)
+    return render_template("planes.html", planes=data, hallazgos=hallazgos_data, empresas=empresas_data, empresa_id=empresa_id)
 
 
 @app.route("/planes/nuevo", methods=["POST"])
