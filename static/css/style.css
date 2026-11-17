@@ -32,8 +32,8 @@ a{color:var(--blue)}
 .app-shell{display:flex;min-height:100vh}
 .sidebar{position:fixed;inset:0 auto 0 0;width:264px;background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;padding:26px 18px 22px;display:flex;flex-direction:column;z-index:20}
 .brand{display:flex;align-items:center;gap:12px;padding:4px 8px 20px;text-decoration:none;color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
-.brand-tile{width:54px;height:54px;border-radius:15px;background:#fff;display:grid;place-items:center;padding:4px;flex-shrink:0;box-shadow:0 6px 18px rgba(0,176,240,.28)}
-.brand-tile img{width:100%;height:100%;object-fit:contain;border-radius:10px}
+.brand-tile{width:64px;height:64px;display:grid;place-items:center;flex-shrink:0;filter:drop-shadow(0 6px 14px rgba(0,176,240,.35))}
+.brand-tile img{width:100%;height:100%;object-fit:contain}
 .brand-text{display:flex;flex-direction:column;line-height:1}
 .brand-total{font-size:19px;font-weight:800;color:#fff}
 .brand-security{font-size:19px;font-weight:800;color:var(--cyan)}
@@ -132,7 +132,7 @@ a{color:var(--blue)}
 .login-wrap{width:100%;max-width:1060px}
 .login-panel{display:grid;grid-template-columns:1fr 420px;align-items:center;gap:64px}
 .login-brand{color:#fff}
-.login-logo-card{background:#fff;border-radius:24px;padding:20px 28px;display:inline-block;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+.login-logo-card{background:#fff;border-radius:24px;padding:22px 30px;display:inline-block;box-shadow:0 24px 60px rgba(0,0,0,.3)}
 .login-logo-card img{width:320px;max-width:100%;display:block}
 .login-tagline{color:#c3d3e6;font-size:17px;margin:26px 0 16px;font-weight:600}
 .login-points{list-style:none;padding:0;margin:0;display:grid;gap:10px}
@@ -160,7 +160,7 @@ a{color:var(--blue)}
 @media(max-width:900px){
     .sidebar{width:82px;padding:22px 10px}
     .brand{justify-content:center;padding:4px 0 18px}
-    .brand-tile{width:46px;height:46px}
+    .brand-tile{width:50px;height:50px}
     .brand-text,.nav-label,.sidebar .nav-link span,.user-card>div:last-child,.logout-link span{display:none}
     .sidebar .nav-link{justify-content:center}
     .sidebar .nav-link i{font-size:20px}
