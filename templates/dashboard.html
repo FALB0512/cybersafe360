@@ -28,7 +28,7 @@
             <div class="small text-secondary">Índice de seguridad</div>
             <div class="score-number">{{ ultima['puntaje'] if ultima else 0 }}</div>
             <div class="score-label">sobre 100</div>
-            <span class="risk-pill risk-{{ (ultima['nivel'] if ultima else 'Crítico')|lower|replace('í','i')|replace('ó','o') }}">
+            <span class="risk-pill risk-{{ (ultima['nivel'] if ultima else 'Sin datos')|lower|replace('í','i')|replace('ó','o')|replace(' ','-') }}">
                 {{ ultima['nivel'] if ultima else 'Sin datos' }}
             </span>
             <p class="text-secondary mt-3 mb-0">

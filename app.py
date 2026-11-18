@@ -1,4 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
+import csv
+import io
 import os
 import sqlite3
 from pathlib import Path
@@ -310,7 +312,10 @@ def dashboard():
             WHERE empresa_id=? AND criticidad=? AND estado!='Cerrado'
         """, (empresa["id"], crit)).fetchone()["c"]
 
-    promedio_avance = conn.execute("SELECT COALESCE(AVG(avance),0) a FROM planes_accion").fetchone()["a"]
+    promedio_avance = conn.execute("""
+        SELECT COALESCE(AVG(p.avance),0) a FROM planes_accion p
+        JOIN hallazgos h ON h.id=p.hallazgo_id WHERE h.empresa_id=?
+    """, (empresa["id"],)).fetchone()["a"]
     nsm_total = conn.execute("""
         SELECT COUNT(*) c FROM hallazgos
         WHERE empresa_id=? AND criticidad IN ('Crítico','Alto')
@@ -334,14 +339,7 @@ def dashboard():
         dominios = [(r["dominio"], int(r["pct"])) for r in rows]
 
     if not dominios:
-        dominios = [
-            ("Identidad y accesos", 52),
-            ("Protección de información", 71),
-            ("Equipos y red", 66),
-            ("Correo y servicios digitales", 58),
-            ("Gestión organizacional", 61),
-            ("Cultura de ciberseguridad", 72),
-        ]
+        dominios = [(d, 0) for d in dict.fromkeys(dom for dom, _ in CONTROLES_BASE)]
 
     conn.close()
     return render_template(
@@ -394,6 +392,92 @@ def empresa_panel(empresa_id):
         abiertos=abiertos, avance=avance
     )
 
+
+@app.route("/empresas/<int:empresa_id>/eliminar", methods=["POST"])
+@roles_required(*EDITORES)
+def eliminar_empresa(empresa_id):
+    conn = get_db()
+    conn.execute("DELETE FROM planes_accion WHERE hallazgo_id IN (SELECT id FROM hallazgos WHERE empresa_id=?)", (empresa_id,))
+    conn.execute("DELETE FROM hallazgos WHERE empresa_id=?", (empresa_id,))
+    conn.execute("DELETE FROM respuestas WHERE evaluacion_id IN (SELECT id FROM evaluaciones WHERE empresa_id=?)", (empresa_id,))
+    conn.execute("DELETE FROM evaluaciones WHERE empresa_id=?", (empresa_id,))
+    conn.execute("DELETE FROM empresas WHERE id=?", (empresa_id,))
+    conn.commit()
+    conn.close()
+    flash("Empresa eliminada junto con sus evaluaciones, hallazgos y plan de acción.", "success")
+    return redirect(url_for("empresas"))
+
+
+def datos_informe(empresa_id):
+    conn = get_db()
+    empresa = conn.execute("SELECT * FROM empresas WHERE id=?", (empresa_id,)).fetchone()
+    if not empresa:
+        conn.close()
+        return None
+    hallazgos_data = conn.execute("""
+        SELECT h.*, c.dominio FROM hallazgos h
+        LEFT JOIN controles c ON c.id=h.control_id
+        WHERE h.empresa_id=?
+        ORDER BY CASE h.criticidad WHEN 'Crítico' THEN 1 WHEN 'Alto' THEN 2 WHEN 'Medio' THEN 3 ELSE 4 END, h.id
+    """, (empresa_id,)).fetchall()
+    planes_data = conn.execute("""
+        SELECT p.*, h.id AS hallazgo_ref, h.codigo FROM planes_accion p
+        JOIN hallazgos h ON h.id=p.hallazgo_id
+        WHERE h.empresa_id=? ORDER BY h.id, p.id
+    """, (empresa_id,)).fetchall()
+    ultima = conn.execute(
+        "SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha DESC, id DESC LIMIT 1", (empresa_id,)
+    ).fetchone()
+    conn.close()
+    planes_por_h = {}
+    for pl in planes_data:
+        planes_por_h.setdefault(pl["hallazgo_ref"], []).append(pl)
+    return empresa, hallazgos_data, planes_por_h, planes_data, ultima
+
+
+@app.route("/empresas/<int:empresa_id>/informe")
+@roles_required(*EDITORES)
+def informe_empresa(empresa_id):
+    datos = datos_informe(empresa_id)
+    if not datos:
+        flash("La empresa no existe.", "danger")
+        return redirect(url_for("empresas"))
+    empresa, hallazgos_data, planes_por_h, planes_data, ultima = datos
+    return render_template(
+        "informe.html", empresa=empresa, hallazgos=hallazgos_data, planes_por_h=planes_por_h,
+        planes=planes_data, ultima=ultima, hoy=date.today().isoformat()
+    )
+
+
+@app.route("/empresas/<int:empresa_id>/informe.csv")
+@roles_required(*EDITORES)
+def informe_csv(empresa_id):
+    datos = datos_informe(empresa_id)
+    if not datos:
+        flash("La empresa no existe.", "danger")
+        return redirect(url_for("empresas"))
+    empresa, hallazgos_data, planes_por_h, _, _ = datos
+    salida = io.StringIO()
+    escritor = csv.writer(salida, delimiter=";")
+    escritor.writerow([
+        "Empresa", "Código", "Dominio", "Hallazgo", "Descripción", "Probabilidad", "Impacto", "Riesgo",
+        "Criticidad", "Estado", "Recomendación", "Cumplimiento", "Observación de verificación",
+        "Acción", "Responsable", "Fecha límite", "Avance %"
+    ])
+    for h in hallazgos_data:
+        base = [empresa["razon_social"], h["codigo"], h["dominio"] or "", h["titulo"], h["descripcion"] or "",
+                h["probabilidad"], h["impacto"], h["riesgo"], h["criticidad"], h["estado"],
+                h["recomendacion"] or "", h["cumplimiento"] or "Sin verificar", h["observacion_verificacion"] or ""]
+        acciones = planes_por_h.get(h["id"], [])
+        if not acciones:
+            escritor.writerow(base + ["Sin acción registrada", "", "", ""])
+        for pl in acciones:
+            escritor.writerow(base + [pl["actividad"], pl["responsable"] or "", pl["fecha_limite"] or "", pl["avance"]])
+    contenido = "\ufeff" + salida.getvalue()
+    return Response(
+        contenido, mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=informe_empresa_{empresa_id}.csv"}
+    )
 
 @app.route("/empresas/nueva", methods=["POST"])
 @roles_required(*EDITORES)

@@ -8,7 +8,14 @@
         <h3 class="mb-1">{{ empresa['razon_social'] }}</h3>
         <div class="text-secondary">{{ empresa['sector'] or 'Sin sector' }} · {{ empresa['empleados'] or '-' }} colaboradores · NIT {{ empresa['nit'] or '-' }}</div>
     </div>
-    <a class="btn btn-primary" href="{{ url_for('nueva_evaluacion_form') }}"><i class="bi bi-plus-lg me-2"></i>Nueva evaluación</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-light" href="{{ url_for('informe_empresa', empresa_id=empresa['id']) }}"><i class="bi bi-file-earmark-text me-1"></i>Informe</a>
+        <a class="btn btn-light" href="{{ url_for('informe_csv', empresa_id=empresa['id']) }}"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+        <a class="btn btn-primary" href="{{ url_for('nueva_evaluacion_form') }}"><i class="bi bi-plus-lg me-2"></i>Nueva evaluación</a>
+        <form method="post" action="{{ url_for('eliminar_empresa', empresa_id=empresa['id']) }}" onsubmit="return confirm('¿Eliminar esta empresa y toda su información? Esta acción no se puede deshacer.');">
+            <button class="btn btn-outline-danger"><i class="bi bi-trash me-1"></i>Eliminar</button>
+        </form>
+    </div>
 </div>
 
 <div class="row g-4 mb-4">
