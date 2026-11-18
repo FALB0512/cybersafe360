@@ -171,3 +171,12 @@ a{color:var(--blue)}
     .login-brand{display:none}
 }
 .risk-sin-datos{background:#eef3f9;color:#475569}
+
+/* Barra lateral: siempre visible el usuario y cerrar sesión, incluso en ventanas bajas */
+.sidebar{overflow-y:auto;overflow-x:hidden}
+.sidebar .brand{padding-bottom:14px}
+.sidebar .nav-label{padding:12px 12px 6px}
+.sidebar .nav-link{padding:8px 12px;margin:1px 0}
+.sidebar .nav{flex:0 0 auto}
+.sidebar-footer{flex-shrink:0;margin-top:auto;padding-top:14px;padding-bottom:6px}
+.sidebar-footer .logout-link{margin-top:10px}
