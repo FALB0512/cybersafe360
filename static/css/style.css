@@ -200,3 +200,8 @@ a{color:var(--blue)}
 .control-item.control-missing{background:#fff5f5;border-left:4px solid #b42318;padding-left:12px;border-radius:10px}
 .pend-badge{font-size:11px;font-weight:800;padding:6px 10px;border-radius:999px;background:var(--critical-soft);color:var(--critical);margin-left:8px}
 .pend-badge.pend-ok{background:var(--success-soft);color:var(--success)}
+
+/* Botones de acción en filas de tabla: mismo tamaño y alineación */
+.acciones{display:flex;gap:8px;align-items:center;flex-wrap:nowrap}
+.acciones form{margin:0}
+.acciones .btn{min-width:104px;text-align:center;font-weight:700;border-radius:10px}

@@ -35,18 +35,20 @@
     <td>{{ u['correo'] }}</td>
     <td><span class="status-badge">{{ roles[u['rol']] }}</span></td>
     <td>{% if u['activo'] %}<span class="status-badge">Activo</span>{% else %}<span class="risk-pill risk-sin-datos">Inactivo</span>{% endif %}</td>
-    <td class="text-nowrap">
-        <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#usuarioEdit{{ u['id'] }}">Editar</button>
-        {% if u['id'] != session['user']['id'] %}
-        <form method="post" action="{{ url_for('estado_usuario', usuario_id=u['id']) }}" class="d-inline"
-              data-confirm="{{ '¿Desactivar a este usuario? Perderá el acceso de inmediato.' if u['activo'] else '¿Activar a este usuario?' }}">
-            <button class="btn btn-sm btn-light">{{ 'Desactivar' if u['activo'] else 'Activar' }}</button>
-        </form>
-        <form method="post" action="{{ url_for('eliminar_usuario', usuario_id=u['id']) }}" class="d-inline"
-              data-confirm="¿Eliminar a «{{ u['nombre'] }}»? Esta acción no se puede deshacer.">
-            <button class="btn btn-sm btn-outline-danger">Eliminar</button>
-        </form>
-        {% endif %}
+    <td>
+        <div class="acciones">
+            <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#usuarioEdit{{ u['id'] }}">Editar</button>
+            {% if u['id'] != session['user']['id'] %}
+            <form method="post" action="{{ url_for('estado_usuario', usuario_id=u['id']) }}"
+                  data-confirm="{{ '¿Desactivar a este usuario? Perderá el acceso de inmediato.' if u['activo'] else '¿Activar a este usuario?' }}">
+                <button class="btn btn-sm btn-outline-warning">{{ 'Desactivar' if u['activo'] else 'Activar' }}</button>
+            </form>
+            <form method="post" action="{{ url_for('eliminar_usuario', usuario_id=u['id']) }}"
+                  data-confirm="¿Eliminar a «{{ u['nombre'] }}»? Esta acción no se puede deshacer.">
+                <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+            </form>
+            {% endif %}
+        </div>
     </td>
 </tr>
 {% endfor %}
