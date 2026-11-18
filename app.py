@@ -536,6 +536,62 @@ def nueva_evaluacion_form():
     )
 
 
+@app.route("/historial")
+@roles_required(*EDITORES)
+def historial():
+    empresa_id = request.args.get("empresa", type=int)
+    conn = get_db()
+    empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
+    empresa = conn.execute("SELECT * FROM empresas WHERE id=?", (empresa_id,)).fetchone() if empresa_id else None
+    if not empresa and empresas_data:
+        empresa = empresas_data[0]
+    evaluaciones_emp = []
+    if empresa:
+        evaluaciones_emp = conn.execute(
+            "SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha DESC, id DESC", (empresa["id"],)
+        ).fetchall()
+
+    dominios_por_eval = {}
+    for ev in evaluaciones_emp[:2]:
+        filas = conn.execute("""
+            SELECT c.dominio, ROUND(100.0 * SUM(r.resultado) / (COUNT(*) * 2), 0) AS pct
+            FROM respuestas r JOIN controles c ON c.id=r.control_id
+            WHERE r.evaluacion_id=? GROUP BY c.dominio
+        """, (ev["id"],)).fetchall()
+        dominios_por_eval[ev["id"]] = {f["dominio"]: int(f["pct"]) for f in filas}
+    conn.close()
+
+    historial_items = []
+    for i, ev in enumerate(evaluaciones_emp):
+        anterior = evaluaciones_emp[i + 1] if i + 1 < len(evaluaciones_emp) else None
+        historial_items.append({"ev": ev, "delta": (ev["puntaje"] - anterior["puntaje"]) if anterior else None})
+
+    comparacion = None
+    if len(evaluaciones_emp) >= 2:
+        actual, anterior = evaluaciones_emp[0], evaluaciones_emp[1]
+        delta = actual["puntaje"] - anterior["puntaje"]
+        dom_act = dominios_por_eval[actual["id"]]
+        dom_ant = dominios_por_eval[anterior["id"]]
+        dominios = [
+            (d, dom_ant.get(d, 0), dom_act.get(d, 0), dom_act.get(d, 0) - dom_ant.get(d, 0))
+            for d in dict.fromkeys(dom for dom, _ in CONTROLES_BASE)
+        ]
+        comparacion = {
+            "actual": actual, "anterior": anterior, "delta": delta,
+            "veredicto": "Mejoró" if delta > 0 else ("Empeoró" if delta < 0 else "Sin cambio"),
+            "dominios": dominios,
+            "desde_inicio": evaluaciones_emp[0]["puntaje"] - evaluaciones_emp[-1]["puntaje"],
+            "primera": evaluaciones_emp[-1],
+        }
+
+    return render_template(
+        "historial.html", empresas=empresas_data, empresa=empresa, historial=historial_items,
+        comparacion=comparacion,
+        grafico_fechas=[e["fecha"] for e in reversed(evaluaciones_emp)],
+        grafico_valores=[e["puntaje"] for e in reversed(evaluaciones_emp)],
+        empresa_id=empresa["id"] if empresa else None
+    )
+
 @app.route("/evaluaciones/<int:evaluacion_id>/editar")
 @roles_required(*EDITORES)
 def editar_evaluacion(evaluacion_id):

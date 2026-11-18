@@ -36,6 +36,9 @@
             <a class="nav-link {% if request.endpoint in ('evaluaciones', 'nueva_evaluacion_form') %}active{% endif %}" href="{{ url_for('evaluaciones') }}">
                 <i class="bi bi-clipboard2-check"></i><span>Evaluaciones</span>
             </a>
+            <a class="nav-link {% if request.endpoint == 'historial' %}active{% endif %}" href="{{ url_for('historial') }}">
+                <i class="bi bi-graph-up-arrow"></i><span>Historial</span>
+            </a>
             {% endif %}
             <a class="nav-link {% if request.endpoint == 'hallazgos' %}active{% endif %}" href="{{ url_for('hallazgos') }}">
                 <i class="bi bi-exclamation-triangle"></i><span>Hallazgos</span>

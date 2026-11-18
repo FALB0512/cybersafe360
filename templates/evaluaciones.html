@@ -4,8 +4,8 @@
 {% block content %}
 <div class="section-actions">
     <div>
-        <h5 class="mb-1">Historial de evaluación</h5>
-        <div class="text-secondary small">El índice se calcula automáticamente a partir de los controles evaluados.</div>
+        <h5 class="mb-1">Evaluaciones registradas</h5>
+        <div class="text-secondary small">Crea, consulta y edita las evaluaciones de cada empresa. La evolución se ve en Historial.</div>
     </div>
     <a class="btn btn-primary" href="{{ url_for('nueva_evaluacion_form') }}">
         <i class="bi bi-clipboard2-check me-2"></i>Iniciar evaluación
@@ -27,6 +27,7 @@
 <td>
 {% if e['observacion'] and 'calculado automáticamente' in e['observacion'] %}
 <a class="btn btn-sm btn-outline-primary" href="{{ url_for('resultado_evaluacion', evaluacion_id=e['id']) }}">Ver resultado</a>
+<a class="btn btn-sm btn-light" href="{{ url_for('editar_evaluacion', evaluacion_id=e['id']) }}">Editar</a>
 {% else %}
 <span class="small text-secondary">Histórica</span>
 {% endif %}
