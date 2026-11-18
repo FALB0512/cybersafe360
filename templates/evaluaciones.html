@@ -25,12 +25,10 @@
 <td><span class="risk-pill risk-{{ e['nivel']|lower|replace('í','i')|replace('ó','o') }}">{{ e['nivel'] }}</span></td>
 <td>{{ e['responsable'] }}</td>
 <td>
-{% if e['observacion'] and 'calculado automáticamente' in e['observacion'] %}
+<div class="d-flex gap-2">
 <a class="btn btn-sm btn-outline-primary" href="{{ url_for('resultado_evaluacion', evaluacion_id=e['id']) }}">Ver resultado</a>
-<a class="btn btn-sm btn-light" href="{{ url_for('editar_evaluacion', evaluacion_id=e['id']) }}">Editar</a>
-{% else %}
-<span class="small text-secondary">Histórica</span>
-{% endif %}
+<a class="btn btn-sm btn-outline-success" href="{{ url_for('editar_evaluacion', evaluacion_id=e['id']) }}">Editar</a>
+</div>
 </td>
 </tr>
 {% endfor %}

@@ -209,6 +209,15 @@ def init_db():
         VALUES (?, ?, ?, ?, ?, ?)
         """, planes)
 
+    cur.execute("""
+        UPDATE hallazgos SET estado='Cerrado', cumplimiento='Cumplió a cabalidad',
+            observacion_verificacion='Corregido según la evaluación más reciente de la empresa.'
+        WHERE estado!='Cerrado' AND control_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM evaluaciones e JOIN respuestas r ON r.evaluacion_id=e.id
+            WHERE e.id = (SELECT e2.id FROM evaluaciones e2 WHERE e2.empresa_id=hallazgos.empresa_id
+                          ORDER BY e2.fecha DESC, e2.id DESC LIMIT 1)
+              AND r.control_id=hallazgos.control_id AND r.resultado>0)
+    """)
     for ev_id, puntaje in cur.execute("SELECT id, puntaje FROM evaluaciones").fetchall():
         cur.execute("UPDATE evaluaciones SET nivel=? WHERE id=?", (nivel_desde_puntaje(puntaje), ev_id))
 
@@ -592,6 +601,44 @@ def historial():
         empresa_id=empresa["id"] if empresa else None
     )
 
+def sincronizar_hallazgos(cur, empresa_id, evaluacion_id, respuestas, controles_por_id, hoy):
+    """La evaluación más reciente define qué hallazgos siguen abiertos en la empresa."""
+    abiertos = {
+        r["control_id"]: r["id"] for r in cur.execute(
+            "SELECT id, control_id FROM hallazgos WHERE empresa_id=? AND control_id IS NOT NULL AND estado!='Cerrado'",
+            (empresa_id,)).fetchall()
+    }
+    for control_id, resultado, observacion in respuestas:
+        abierto = abiertos.get(control_id)
+        if resultado == 0 and abierto is None:
+            control = controles_por_id[control_id]
+            next_num = cur.execute("SELECT COUNT(*) + 1 n FROM hallazgos").fetchone()["n"]
+            prob, impacto = 3, 3
+            riesgo = prob * impacto
+            cur.execute("""
+                INSERT INTO hallazgos
+                (empresa_id, codigo, titulo, descripcion, probabilidad, impacto, riesgo,
+                 criticidad, recomendacion, estado, control_id, evaluacion_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?)
+            """, (
+                empresa_id, f"CYB-{next_num:03d}",
+                f"Control no implementado: {control['pregunta'][:85]}",
+                f"Durante la evaluación del {hoy} se registró 'No cumple' para el control del dominio {control['dominio']}. "
+                + (f"Observación: {observacion}" if observacion else ""),
+                prob, impacto, riesgo, criticidad_desde_riesgo(riesgo),
+                RECOMENDACIONES_CONTROLES.get(
+                    control["pregunta"],
+                    "Definir una acción correctiva, responsable y fecha de implementación."
+                ),
+                control_id, evaluacion_id
+            ))
+        elif resultado > 0 and abierto is not None:
+            cur.execute("""
+                UPDATE hallazgos SET estado='Cerrado', cumplimiento='Cumplió a cabalidad',
+                observacion_verificacion=? WHERE id=?
+            """, (f"Corregido en la evaluación del {hoy}.", abierto))
+
+
 @app.route("/evaluaciones/<int:evaluacion_id>/editar")
 @roles_required(*EDITORES)
 def editar_evaluacion(evaluacion_id):
@@ -659,37 +706,8 @@ def actualizar_evaluacion(evaluacion_id):
             VALUES (?, ?, ?, ?)
         """, (evaluacion_id, control_id, resultado, observacion))
 
-    # Sincroniza hallazgos generados por esta evaluación con las nuevas respuestas.
-    existentes = {h["control_id"]: h for h in cur.execute(
-        "SELECT id, control_id, estado FROM hallazgos WHERE evaluacion_id=? AND control_id IS NOT NULL",
-        (evaluacion_id,)).fetchall()}
     controles_por_id = {c["id"]: c for c in controles}
-    for control_id, resultado, observacion in respuestas:
-        h = existentes.get(control_id)
-        if resultado == 0 and h is None:
-            control = controles_por_id[control_id]
-            next_num = cur.execute("SELECT COUNT(*) + 1 n FROM hallazgos").fetchone()["n"]
-            cur.execute("""
-                INSERT INTO hallazgos
-                (empresa_id, codigo, titulo, descripcion, probabilidad, impacto, riesgo,
-                 criticidad, recomendacion, estado, control_id, evaluacion_id)
-                VALUES (?, ?, ?, ?, 3, 3, 9, 'Alto', ?, 'Pendiente', ?, ?)
-            """, (
-                ev["empresa_id"], f"CYB-{next_num:03d}",
-                f"Control no implementado: {control['pregunta'][:85]}",
-                f"Durante la reevaluación del {hoy} se registró 'No cumple' para el control del dominio {control['dominio']}. "
-                + (f"Observación: {observacion}" if observacion else ""),
-                RECOMENDACIONES_CONTROLES.get(control["pregunta"],
-                    "Definir una acción correctiva, responsable y fecha de implementación."),
-                control_id, evaluacion_id
-            ))
-        elif resultado == 0 and h is not None and h["estado"] == "Cerrado":
-            cur.execute("UPDATE hallazgos SET estado='Pendiente', cumplimiento=NULL WHERE id=?", (h["id"],))
-        elif resultado > 0 and h is not None and h["estado"] != "Cerrado":
-            cur.execute("""
-                UPDATE hallazgos SET estado='Cerrado', cumplimiento='Cumplió a cabalidad',
-                observacion_verificacion=? WHERE id=?
-            """, (f"Corregido en la reevaluación del {hoy}.", h["id"]))
+    sincronizar_hallazgos(cur, ev["empresa_id"], evaluacion_id, respuestas, controles_por_id, hoy)
 
     conn.commit()
     conn.close()
@@ -742,35 +760,9 @@ def guardar_evaluacion():
             VALUES (?, ?, ?, ?)
         """, (evaluacion_id, control_id, resultado, observacion))
 
-        # Si no cumple, crear hallazgo sugerido automáticamente.
-        if resultado == 0:
-            control = next(c for c in controles if c["id"] == control_id)
-            next_num = cur.execute("SELECT COUNT(*) + 1 n FROM hallazgos").fetchone()["n"]
-            codigo = f"CYB-{next_num:03d}"
 
-            # Priorización base: el consultor luego puede ajustar.
-            prob, impacto = 3, 3
-            riesgo = prob * impacto
-            criticidad = criticidad_desde_riesgo(riesgo)
-
-            cur.execute("""
-                INSERT INTO hallazgos
-                (empresa_id, codigo, titulo, descripcion, probabilidad, impacto, riesgo,
-                 criticidad, recomendacion, estado, control_id, evaluacion_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?)
-            """, (
-                empresa_id, codigo,
-                f"Control no implementado: {control['pregunta'][:85]}",
-                f"Durante la evaluación se registró 'No cumple' para el control del dominio {control['dominio']}. "
-                + (f"Observación: {observacion}" if observacion else ""),
-                prob, impacto, riesgo, criticidad,
-                RECOMENDACIONES_CONTROLES.get(
-                    control["pregunta"],
-                    "Definir una acción correctiva, responsable y fecha de implementación."
-                ),
-                control_id, evaluacion_id
-            ))
-
+    controles_por_id = {c["id"]: c for c in controles}
+    sincronizar_hallazgos(cur, empresa_id, evaluacion_id, respuestas, controles_por_id, date.today().isoformat())
     conn.commit()
     conn.close()
 
