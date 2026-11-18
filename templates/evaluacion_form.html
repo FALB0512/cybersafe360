@@ -1,22 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Nueva evaluación | CyberSafe 360{% endblock %}
-{% block page_title %}Nueva evaluación de ciberseguridad{% endblock %}
+{% block title %}Nueva evaluación | TotalSecurity{% endblock %}
+{% block page_title %}{{ 'Editar evaluación' if evaluacion else 'Nueva evaluación de ciberseguridad' }}{% endblock %}
 
 {% block content %}
-<form method="post" action="{{ url_for('guardar_evaluacion') }}">
+<form method="post" action="{{ action }}">
 <div class="panel-card mb-4">
     <div class="row g-3 align-items-end">
         <div class="col-lg-8">
             <label class="form-label">Empresa</label>
             <select class="form-select" name="empresa_id" required>
                 {% for e in empresas %}
-                <option value="{{ e['id'] }}">{{ e['razon_social'] }} · {{ e['sector'] }}</option>
+                <option value="{{ e['id'] }}" {% if evaluacion and evaluacion['empresa_id'] == e['id'] %}selected{% endif %}>{{ e['razon_social'] }} · {{ e['sector'] }}</option>
                 {% endfor %}
             </select>
         </div>
         <div class="col-lg-4">
             <label class="form-label">Fecha</label>
-            <input type="date" class="form-control" name="fecha">
+            <input type="date" class="form-control" name="fecha" value="{{ evaluacion['fecha'] if evaluacion else '' }}">
         </div>
     </div>
 </div>
@@ -49,21 +49,22 @@
             <span class="control-num">{{ loop.index }}</span>
             <div>
                 <strong>{{ c['pregunta'] }}</strong>
-                <textarea class="form-control form-control-sm mt-2" rows="1" name="obs_{{ c['id'] }}" placeholder="Observación o evidencia (opcional)"></textarea>
+                {% set r = respuestas.get(c['id']) %}
+                <textarea class="form-control form-control-sm mt-2" rows="1" name="obs_{{ c['id'] }}" placeholder="Observación o evidencia (opcional)">{{ r['observacion'] if r else '' }}</textarea>
             </div>
         </div>
 
         <div class="control-options">
             <label class="option-card option-good">
-                <input type="radio" name="control_{{ c['id'] }}" value="2" required>
+                <input type="radio" name="control_{{ c['id'] }}" value="2" required {% if r and r['resultado'] == 2 %}checked{% endif %}>
                 <span><i class="bi bi-check-circle-fill"></i> Cumple</span>
             </label>
             <label class="option-card option-partial">
-                <input type="radio" name="control_{{ c['id'] }}" value="1">
+                <input type="radio" name="control_{{ c['id'] }}" value="1" {% if r and r['resultado'] == 1 %}checked{% endif %}>
                 <span><i class="bi bi-dash-circle-fill"></i> Parcial</span>
             </label>
             <label class="option-card option-bad">
-                <input type="radio" name="control_{{ c['id'] }}" value="0">
+                <input type="radio" name="control_{{ c['id'] }}" value="0" {% if r and r['resultado'] == 0 %}checked{% endif %}>
                 <span><i class="bi bi-x-circle-fill"></i> No cumple</span>
             </label>
         </div>
@@ -78,7 +79,7 @@
         <div class="small text-secondary">Los controles en “No cumple” generarán hallazgos sugeridos automáticamente.</div>
     </div>
     <button class="btn btn-primary btn-lg">
-        <i class="bi bi-calculator me-2"></i>Calcular índice CyberSafe
+        <i class="bi bi-calculator me-2"></i>{{ 'Guardar cambios y recalcular' if evaluacion else 'Calcular índice TotalSecurity' }}
     </button>
 </div>
 </form>

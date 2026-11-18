@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ empresa['razon_social'] }} | TotalSecurity{% endblock %}
+{% block page_title %}Panel de empresa{% endblock %}
+{% block content %}
+<div class="client-header">
+    <div>
+        <div class="small text-secondary">Empresa evaluada</div>
+        <h3 class="mb-1">{{ empresa['razon_social'] }}</h3>
+        <div class="text-secondary">{{ empresa['sector'] or 'Sin sector' }} · {{ empresa['empleados'] or '-' }} colaboradores · NIT {{ empresa['nit'] or '-' }}</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-light" target="_blank" rel="noopener" href="{{ url_for('informe_empresa', empresa_id=empresa['id']) }}"><i class="bi bi-file-earmark-text me-1"></i>Informe</a>
+        <a class="btn btn-light" href="{{ url_for('informe_csv', empresa_id=empresa['id']) }}"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+        <a class="btn btn-primary" href="{{ url_for('nueva_evaluacion_form') }}"><i class="bi bi-plus-lg me-2"></i>Nueva evaluación</a>
+        <form method="post" action="{{ url_for('eliminar_empresa', empresa_id=empresa['id']) }}" onsubmit="return confirm('¿Eliminar esta empresa y toda su información? Esta acción no se puede deshacer.');">
+            <button class="btn btn-outline-danger"><i class="bi bi-trash me-1"></i>Eliminar</button>
+        </form>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-4">
+        <div class="score-card h-100">
+            <div class="small text-secondary">Índice de seguridad</div>
+            <div class="score-number">{{ ultima['puntaje'] if ultima else 0 }}</div>
+            <div class="score-label">sobre 100 · {{ ultima['fecha'] if ultima else 'Sin evaluación' }}</div>
+            {% if ultima %}
+            <span class="risk-pill risk-{{ ultima['nivel']|lower|replace('í','i')|replace('ó','o') }}">{{ ultima['nivel'] }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-xl-8">
+        <div class="row g-4">
+            <div class="col-md-4"><div class="metric-card metric-critical"><div class="metric-icon"><i class="bi bi-exclamation-octagon-fill"></i></div><div><div class="metric-value">{{ abiertos['Crítico'] }}</div><div class="metric-label">Críticos abiertos</div></div></div></div>
+            <div class="col-md-4"><div class="metric-card metric-high"><div class="metric-icon"><i class="bi bi-exclamation-triangle-fill"></i></div><div><div class="metric-value">{{ abiertos['Alto'] }}</div><div class="metric-label">Altos abiertos</div></div></div></div>
+            <div class="col-md-4"><div class="metric-card metric-medium"><div class="metric-icon"><i class="bi bi-info-circle-fill"></i></div><div><div class="metric-value">{{ abiertos['Medio'] }}</div><div class="metric-label">Medios abiertos</div></div></div></div>
+            <div class="col-md-6"><div class="metric-card"><div class="metric-icon neutral"><i class="bi bi-list-check"></i></div><div><div class="metric-value">{{ avance }}%</div><div class="metric-label">Avance promedio del plan</div></div></div></div>
+            <div class="col-md-6"><div class="metric-card"><div class="metric-icon neutral"><i class="bi bi-clipboard2-check"></i></div><div><div class="metric-value">{{ evaluaciones|length }}</div><div class="metric-label">Evaluaciones registradas</div></div></div></div>
+        </div>
+    </div>
+</div>
+
+<div class="panel-card mb-4">
+    <div class="panel-head">
+        <div><h5>Evolución del índice</h5><div class="small text-secondary">Cada evaluación registrada, en orden cronológico</div></div>
+    </div>
+    <canvas id="historialChart" height="90"></canvas>
+</div>
+
+<div class="panel-card p-0 overflow-hidden mb-4">
+    <div class="p-4 pb-2 d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold">Historial de evaluaciones</h5>
+        <a class="btn btn-sm btn-primary" href="{{ url_for('nueva_evaluacion_form') }}"><i class="bi bi-plus-lg me-1"></i>Nueva evaluación</a>
+    </div>
+    <div class="table-responsive"><table class="table align-middle mb-0 modern-table">
+        <thead><tr><th>Fecha</th><th>Índice</th><th>Variación</th><th>Nivel</th><th></th></tr></thead>
+        <tbody>
+        {% for item in historial %}
+        <tr>
+            <td>{{ item.ev['fecha'] }}</td>
+            <td><strong>{{ item.ev['puntaje'] }}</strong>/100</td>
+            <td>{% if item.delta is none %}<span class="text-secondary">Primera evaluación</span>{% elif item.delta > 0 %}<span class="text-success fw-bold">▲ +{{ item.delta }}</span>{% elif item.delta < 0 %}<span class="text-danger fw-bold">▼ {{ item.delta }}</span>{% else %}<span class="text-secondary">Sin cambio</span>{% endif %}</td>
+            <td><span class="risk-pill risk-{{ item.ev['nivel']|lower|replace('í','i')|replace('ó','o') }}">{{ item.ev['nivel'] }}</span></td>
+            <td class="text-nowrap">
+                <a href="{{ url_for('resultado_evaluacion', evaluacion_id=item.ev['id']) }}">Resultado</a>
+                <span class="text-secondary mx-1">|</span>
+                <a href="{{ url_for('editar_evaluacion', evaluacion_id=item.ev['id']) }}">Editar</a>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-secondary">Esta empresa aún no tiene evaluaciones.</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+</div>
+
+<div class="panel-card p-0 overflow-hidden mb-4">
+    <div class="p-4 pb-2"><h5 class="mb-0 fw-bold">Hallazgos</h5></div>
+    <div class="table-responsive"><table class="table align-middle mb-0 modern-table">
+        <thead><tr><th>Código</th><th>Hallazgo</th><th>Criticidad</th><th>Riesgo</th><th>Estado</th></tr></thead>
+        <tbody>
+        {% for h in hallazgos %}
+        <tr><td><span class="finding-code">{{ h['codigo'] }}</span></td><td>{{ h['titulo'] }}</td>
+            <td><span class="risk-pill risk-{{ h['criticidad']|lower|replace('í','i') }}">{{ h['criticidad'] }}</span></td>
+            <td>{{ h['riesgo'] }}/16</td><td>{{ h['estado'] }}</td></tr>
+        {% else %}
+        <tr><td colspan="5" class="text-secondary">Sin hallazgos registrados.</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+</div>
+
+<div class="panel-card p-0 overflow-hidden">
+    <div class="p-4 pb-2"><h5 class="mb-0 fw-bold">Plan de acción</h5></div>
+    <div class="table-responsive"><table class="table align-middle mb-0 modern-table">
+        <thead><tr><th>Hallazgo</th><th>Actividad</th><th>Responsable</th><th>Fecha límite</th><th>Avance</th></tr></thead>
+        <tbody>
+        {% for p in planes %}
+        <tr><td><span class="finding-code">{{ p['codigo'] }}</span><br><span class="small">{{ p['titulo'] }}</span></td>
+            <td>{{ p['actividad'] }}</td><td>{{ p['responsable'] or '-' }}</td><td>{{ p['fecha_limite'] or '-' }}</td>
+            <td style="min-width:140px"><strong>{{ p['avance'] }}%</strong><div class="progress mt-1"><div class="progress-bar" style="width:{{ p['avance'] }}%"></div></div></td></tr>
+        {% else %}
+        <tr><td colspan="5" class="text-secondary">Sin acciones de plan registradas.</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('historialChart'), {
+    type: 'line',
+    data: {
+        labels: {{ grafico_fechas|tojson }},
+        datasets: [{ label: 'Índice TotalSecurity', data: {{ grafico_valores|tojson }}, tension: 0.35, fill: true, borderWidth: 3, pointRadius: 5 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
+});
+</script>
+{% endblock %}

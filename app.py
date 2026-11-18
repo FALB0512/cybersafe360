@@ -1,105 +1,33 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
+import csv
+import io
+import os
 import sqlite3
 from pathlib import Path
 from datetime import date
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = "cybersafe360-demo-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "cambiar-en-produccion")
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "cybersafe360.db"
 
-DEMO_USER = {
-    "email": "admin@cybersafe360.com",
-    "password": "CyberSafe360!",
-    "name": "Administrador CyberSafe",
-    "role": "Consultor"
+ROLES = {
+    "admin": "Administrador",
+    "consultor": "Consultor",
+    "cliente": "Cliente",
 }
+EDITORES = ("admin", "consultor")
 
-CONTROLES_BASE = [
-    ("Identidad y accesos", "¿Se utiliza autenticación multifactor (MFA) en las cuentas administrativas?"),
-    ("Identidad y accesos", "¿Existe una política formal de contraseñas?"),
-    ("Identidad y accesos", "¿Se eliminan o deshabilitan oportunamente las cuentas de exempleados?"),
-    ("Identidad y accesos", "¿Se revisan periódicamente los privilegios de acceso?"),
-
-    ("Protección de información", "¿La organización realiza copias de seguridad periódicas?"),
-    ("Protección de información", "¿Se realizan pruebas de restauración de copias de seguridad?"),
-    ("Protección de información", "¿La información sensible se encuentra clasificada?"),
-    ("Protección de información", "¿Los permisos sobre información sensible se revisan periódicamente?"),
-
-    ("Equipos y red", "¿Los equipos reciben actualizaciones y parches de seguridad de forma periódica?"),
-    ("Equipos y red", "¿Los equipos cuentan con protección antimalware o EDR?"),
-    ("Equipos y red", "¿La organización utiliza firewall para proteger sus redes?"),
-    ("Equipos y red", "¿Se controla el acceso a las redes inalámbricas corporativas?"),
-
-    ("Correo y servicios digitales", "¿Las cuentas de correo corporativo utilizan MFA?"),
-    ("Correo y servicios digitales", "¿Existen filtros o controles contra phishing y correo malicioso?"),
-    ("Correo y servicios digitales", "¿Se revisan configuraciones de seguridad de servicios en la nube?"),
-    ("Correo y servicios digitales", "¿Existe un proceso para reportar correos sospechosos?"),
-
-    ("Gestión organizacional", "¿Existe una política de seguridad de la información aprobada?"),
-    ("Gestión organizacional", "¿Se han definido responsables de ciberseguridad o seguridad de la información?"),
-    ("Gestión organizacional", "¿Existe un procedimiento formal de gestión de incidentes?"),
-    ("Gestión organizacional", "¿Se realiza una revisión periódica de riesgos de seguridad?"),
-
-    ("Cultura de ciberseguridad", "¿Los colaboradores reciben capacitación periódica en ciberseguridad?"),
-    ("Cultura de ciberseguridad", "¿Se realizan campañas o simulaciones de phishing?"),
-    ("Cultura de ciberseguridad", "¿Los usuarios conocen buenas prácticas sobre contraseñas y MFA?"),
-    ("Cultura de ciberseguridad", "¿Los colaboradores saben cómo reportar un incidente de seguridad?")
-
+USUARIOS_SEMILLA = [
+    ("Administrador TotalSecurity", "admin@totalsecurity.com", "TotalSecurity360!", "admin"),
+    ("Consultor TotalSecurity", "consultor@totalsecurity.com", "Consultor360!", "consultor"),
+    ("Cliente Ingeniería Andina", "cliente@totalsecurity.com", "Cliente360!", "cliente"),
 ]
 
-RECOMENDACIONES_CONTROLES = {
-    "¿Se utiliza autenticación multifactor (MFA) en las cuentas administrativas?":
-        "Habilitar MFA para el 100% de las cuentas administrativas y privilegiadas, priorizando aplicaciones críticas y servicios en la nube.",
-    "¿Existe una política formal de contraseñas?":
-        "Definir, aprobar y comunicar una política de contraseñas que contemple longitud mínima, bloqueo, reutilización y uso de gestores de contraseñas.",
-    "¿Se eliminan o deshabilitan oportunamente las cuentas de exempleados?":
-        "Implementar un procedimiento formal de retiro que deshabilite cuentas y revoque accesos inmediatamente al finalizar la relación laboral.",
-    "¿Se revisan periódicamente los privilegios de acceso?":
-        "Realizar revisiones periódicas de privilegios bajo el principio de mínimo privilegio y documentar las aprobaciones de acceso.",
-    "¿La organización realiza copias de seguridad periódicas?":
-        "Establecer un esquema de copias de seguridad con frecuencia definida, responsables, retención y monitoreo de ejecuciones fallidas.",
-    "¿Se realizan pruebas de restauración de copias de seguridad?":
-        "Programar y documentar pruebas periódicas de restauración para verificar que los respaldos puedan recuperarse dentro de los tiempos requeridos.",
-    "¿La información sensible se encuentra clasificada?":
-        "Definir una política de clasificación de información y aplicar niveles de sensibilidad, responsables y reglas de manejo para cada categoría.",
-    "¿Los permisos sobre información sensible se revisan periódicamente?":
-        "Revisar periódicamente permisos y grupos de acceso sobre información sensible, eliminando accesos innecesarios o desactualizados.",
-    "¿Los equipos reciben actualizaciones y parches de seguridad de forma periódica?":
-        "Implementar un proceso de gestión de parches con inventario, criticidad, tiempos máximos de instalación y verificación de cumplimiento.",
-    "¿Los equipos cuentan con protección antimalware o EDR?":
-        "Implementar y mantener protección antimalware/EDR administrada, con actualizaciones automáticas y monitoreo de alertas.",
-    "¿La organización utiliza firewall para proteger sus redes?":
-        "Implementar o fortalecer firewall perimetral y reglas de filtrado, documentando servicios expuestos y revisando periódicamente las reglas.",
-    "¿Se controla el acceso a las redes inalámbricas corporativas?":
-        "Separar redes corporativas e invitados, usar cifrado robusto y gestionar credenciales de acceso de forma controlada.",
-    "¿Las cuentas de correo corporativo utilizan MFA?":
-        "Habilitar MFA para todas las cuentas de correo corporativo, priorizando usuarios con acceso a información sensible o funciones administrativas.",
-    "¿Existen filtros o controles contra phishing y correo malicioso?":
-        "Configurar filtros antiphishing, antispam y análisis de adjuntos/enlaces, complementados con campañas de sensibilización.",
-    "¿Se revisan configuraciones de seguridad de servicios en la nube?":
-        "Realizar revisiones periódicas de configuración segura, permisos, MFA, registros y exposición de servicios en la nube.",
-    "¿Existe un proceso para reportar correos sospechosos?":
-        "Definir un canal simple y visible para reportar correos sospechosos, con responsables y tiempos de análisis establecidos.",
-    "¿Existe una política de seguridad de la información aprobada?":
-        "Documentar, aprobar y comunicar una política de seguridad de la información alineada con los riesgos y responsabilidades de la organización.",
-    "¿Se han definido responsables de ciberseguridad o seguridad de la información?":
-        "Asignar formalmente responsables, roles y responsabilidades para la gestión de ciberseguridad y seguridad de la información.",
-    "¿Existe un procedimiento formal de gestión de incidentes?":
-        "Diseñar y aprobar un procedimiento de gestión de incidentes con etapas de detección, reporte, contención, recuperación y lecciones aprendidas.",
-    "¿Se realiza una revisión periódica de riesgos de seguridad?":
-        "Establecer revisiones periódicas de riesgos con responsables, criterios de valoración, planes de tratamiento y seguimiento.",
-    "¿Los colaboradores reciben capacitación periódica en ciberseguridad?":
-        "Implementar un programa periódico de formación en ciberseguridad adaptado a los riesgos y roles de los colaboradores.",
-    "¿Se realizan campañas o simulaciones de phishing?":
-        "Ejecutar simulaciones de phishing periódicas y utilizar los resultados para dirigir refuerzos formativos a los grupos con mayor exposición.",
-    "¿Los usuarios conocen buenas prácticas sobre contraseñas y MFA?":
-        "Reforzar prácticas de contraseñas seguras, gestores de contraseñas y MFA mediante capacitación y comunicaciones periódicas.",
-    "¿Los colaboradores saben cómo reportar un incidente de seguridad?":
-        "Definir y divulgar un canal de reporte de incidentes, indicando qué reportar, a quién, cómo y en qué plazo."
-}
+from datos import CONTROLES_BASE, RECOMENDACIONES_CONTROLES
 
 
 def get_db():
@@ -189,10 +117,28 @@ def init_db():
         ("evaluaciones", "observacion", "ALTER TABLE evaluaciones ADD COLUMN observacion TEXT"),
         ("hallazgos", "control_id", "ALTER TABLE hallazgos ADD COLUMN control_id INTEGER"),
         ("hallazgos", "evaluacion_id", "ALTER TABLE hallazgos ADD COLUMN evaluacion_id INTEGER"),
+        ("hallazgos", "observacion_verificacion", "ALTER TABLE hallazgos ADD COLUMN observacion_verificacion TEXT"),
+        ("hallazgos", "cumplimiento", "ALTER TABLE hallazgos ADD COLUMN cumplimiento TEXT"),
     ]:
         cols = [r["name"] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
         if column not in cols:
             cur.execute(ddl)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        correo TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        rol TEXT NOT NULL,
+        activo INTEGER DEFAULT 1
+    )
+    """)
+    if cur.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0:
+        cur.executemany(
+            "INSERT INTO usuarios (nombre, correo, password_hash, rol) VALUES (?, ?, ?, ?)",
+            [(n, c, generate_password_hash(pw), r) for n, c, pw, r in USUARIOS_SEMILLA]
+        )
 
     if cur.execute("SELECT COUNT(*) FROM controles").fetchone()[0] == 0:
         cur.executemany("INSERT INTO controles (dominio, pregunta, activo) VALUES (?, ?, 1)", CONTROLES_BASE)
@@ -208,10 +154,10 @@ def init_db():
         empresa_id = cur.lastrowid
 
         evaluaciones = [
-            (empresa_id, "2026-05-15", 48, "Alto", "Administrador CyberSafe", "Evaluación histórica de demostración"),
-            (empresa_id, "2026-06-15", 53, "Alto", "Administrador CyberSafe", "Evaluación histórica de demostración"),
-            (empresa_id, "2026-07-15", 58, "Alto", "Administrador CyberSafe", "Evaluación histórica de demostración"),
-            (empresa_id, "2026-08-15", 63, "Medio", "Administrador CyberSafe", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-05-15", 48, "Alto", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-06-15", 53, "Alto", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-07-15", 58, "Alto", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
+            (empresa_id, "2026-08-15", 63, "Medio", "Administrador TotalSecurity", "Evaluación histórica de demostración"),
         ]
         cur.executemany("""
         INSERT INTO evaluaciones (empresa_id, fecha, puntaje, nivel, responsable, observacion)
@@ -267,13 +213,29 @@ def init_db():
     conn.close()
 
 
+def roles_required(*roles):
+    def decorador(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = session.get("user")
+            if not user:
+                return redirect(url_for("login"))
+            if roles and user["rol"] not in roles:
+                flash("Tu perfil no tiene acceso a esta sección.", "danger")
+                return redirect(url_for("dashboard"))
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorador
+
+
 def login_required(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if "user" not in session:
-            return redirect(url_for("login"))
-        return fn(*args, **kwargs)
-    return wrapper
+    return roles_required()(fn)
+
+
+@app.context_processor
+def permisos():
+    rol = session.get("user", {}).get("rol")
+    return {"puede_editar": rol in EDITORES, "es_admin": rol == "admin"}
 
 
 def nivel_desde_puntaje(puntaje):
@@ -310,8 +272,14 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        if email == DEMO_USER["email"] and password == DEMO_USER["password"]:
-            session["user"] = DEMO_USER
+        conn = get_db()
+        u = conn.execute("SELECT * FROM usuarios WHERE correo=? AND activo=1", (email,)).fetchone()
+        conn.close()
+        if u and check_password_hash(u["password_hash"], password):
+            session["user"] = {
+                "id": u["id"], "name": u["nombre"], "email": u["correo"],
+                "rol": u["rol"], "role": ROLES[u["rol"]],
+            }
             return redirect(url_for("dashboard"))
         flash("Correo o contraseña incorrectos.", "danger")
     return render_template("login.html")
@@ -327,7 +295,11 @@ def logout():
 @login_required
 def dashboard():
     conn = get_db()
-    empresa = conn.execute("SELECT * FROM empresas ORDER BY id LIMIT 1").fetchone()
+    empresa_id = request.args.get("empresa", type=int)
+    empresa = conn.execute("SELECT * FROM empresas WHERE id=?", (empresa_id,)).fetchone() if empresa_id else None
+    if not empresa:
+        empresa = conn.execute("SELECT * FROM empresas ORDER BY id LIMIT 1").fetchone()
+    empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
     evaluaciones = conn.execute("""
         SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha, id
     """, (empresa["id"],)).fetchall()
@@ -340,7 +312,10 @@ def dashboard():
             WHERE empresa_id=? AND criticidad=? AND estado!='Cerrado'
         """, (empresa["id"], crit)).fetchone()["c"]
 
-    promedio_avance = conn.execute("SELECT COALESCE(AVG(avance),0) a FROM planes_accion").fetchone()["a"]
+    promedio_avance = conn.execute("""
+        SELECT COALESCE(AVG(p.avance),0) a FROM planes_accion p
+        JOIN hallazgos h ON h.id=p.hallazgo_id WHERE h.empresa_id=?
+    """, (empresa["id"],)).fetchone()["a"]
     nsm_total = conn.execute("""
         SELECT COUNT(*) c FROM hallazgos
         WHERE empresa_id=? AND criticidad IN ('Crítico','Alto')
@@ -364,26 +339,20 @@ def dashboard():
         dominios = [(r["dominio"], int(r["pct"])) for r in rows]
 
     if not dominios:
-        dominios = [
-            ("Identidad y accesos", 52),
-            ("Protección de información", 71),
-            ("Equipos y red", 66),
-            ("Correo y servicios digitales", 58),
-            ("Gestión organizacional", 61),
-            ("Cultura de ciberseguridad", 72),
-        ]
+        dominios = [(d, 0) for d in dict.fromkeys(dom for dom, _ in CONTROLES_BASE)]
 
     conn.close()
     return render_template(
         "dashboard.html", empresa=empresa, evaluaciones=evaluaciones, ultima=ultima,
         criticos=counts["Crítico"], altos=counts["Alto"], medios=counts["Medio"],
         promedio_avance=round(promedio_avance),
-        dominios=dominios, nsm_total=nsm_total, nsm_mitigados=nsm_mitigados
+        dominios=dominios, nsm_total=nsm_total, nsm_mitigados=nsm_mitigados,
+        empresas=empresas_data
     )
 
 
 @app.route("/empresas")
-@login_required
+@roles_required(*EDITORES)
 def empresas():
     conn = get_db()
     data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
@@ -391,8 +360,133 @@ def empresas():
     return render_template("empresas.html", empresas=data)
 
 
+@app.route("/empresas/<int:empresa_id>")
+@roles_required(*EDITORES)
+def empresa_panel(empresa_id):
+    conn = get_db()
+    empresa = conn.execute("SELECT * FROM empresas WHERE id=?", (empresa_id,)).fetchone()
+    if not empresa:
+        conn.close()
+        flash("La empresa no existe.", "danger")
+        return redirect(url_for("empresas"))
+    evaluaciones = conn.execute(
+        "SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha DESC, id DESC", (empresa_id,)
+    ).fetchall()
+    hallazgos_emp = conn.execute("""
+        SELECT * FROM hallazgos WHERE empresa_id=?
+        ORDER BY CASE criticidad WHEN 'Crítico' THEN 1 WHEN 'Alto' THEN 2 WHEN 'Medio' THEN 3 ELSE 4 END, id DESC
+    """, (empresa_id,)).fetchall()
+    planes_emp = conn.execute("""
+        SELECT p.*, h.codigo, h.titulo
+        FROM planes_accion p JOIN hallazgos h ON h.id=p.hallazgo_id
+        WHERE h.empresa_id=? ORDER BY p.fecha_limite
+    """, (empresa_id,)).fetchall()
+    conn.close()
+
+    abiertos = {c: sum(1 for h in hallazgos_emp if h["criticidad"] == c and h["estado"] != "Cerrado")
+                for c in ("Crítico", "Alto", "Medio")}
+    avance = round(sum(p["avance"] for p in planes_emp) / len(planes_emp)) if planes_emp else 0
+    historial = []
+    for i, ev in enumerate(evaluaciones):
+        anterior = evaluaciones[i + 1] if i + 1 < len(evaluaciones) else None
+        historial.append({"ev": ev, "delta": (ev["puntaje"] - anterior["puntaje"]) if anterior else None})
+    return render_template(
+        "empresa.html", empresa=empresa, ultima=evaluaciones[0] if evaluaciones else None,
+        evaluaciones=evaluaciones, historial=historial, hallazgos=hallazgos_emp, planes=planes_emp,
+        abiertos=abiertos, avance=avance,
+        grafico_fechas=[e["fecha"] for e in reversed(evaluaciones)],
+        grafico_valores=[e["puntaje"] for e in reversed(evaluaciones)]
+    )
+
+
+@app.route("/empresas/<int:empresa_id>/eliminar", methods=["POST"])
+@roles_required(*EDITORES)
+def eliminar_empresa(empresa_id):
+    conn = get_db()
+    conn.execute("DELETE FROM planes_accion WHERE hallazgo_id IN (SELECT id FROM hallazgos WHERE empresa_id=?)", (empresa_id,))
+    conn.execute("DELETE FROM hallazgos WHERE empresa_id=?", (empresa_id,))
+    conn.execute("DELETE FROM respuestas WHERE evaluacion_id IN (SELECT id FROM evaluaciones WHERE empresa_id=?)", (empresa_id,))
+    conn.execute("DELETE FROM evaluaciones WHERE empresa_id=?", (empresa_id,))
+    conn.execute("DELETE FROM empresas WHERE id=?", (empresa_id,))
+    conn.commit()
+    conn.close()
+    flash("Empresa eliminada junto con sus evaluaciones, hallazgos y plan de acción.", "success")
+    return redirect(url_for("empresas"))
+
+
+def datos_informe(empresa_id):
+    conn = get_db()
+    empresa = conn.execute("SELECT * FROM empresas WHERE id=?", (empresa_id,)).fetchone()
+    if not empresa:
+        conn.close()
+        return None
+    hallazgos_data = conn.execute("""
+        SELECT h.*, c.dominio FROM hallazgos h
+        LEFT JOIN controles c ON c.id=h.control_id
+        WHERE h.empresa_id=?
+        ORDER BY CASE h.criticidad WHEN 'Crítico' THEN 1 WHEN 'Alto' THEN 2 WHEN 'Medio' THEN 3 ELSE 4 END, h.id
+    """, (empresa_id,)).fetchall()
+    planes_data = conn.execute("""
+        SELECT p.*, h.id AS hallazgo_ref, h.codigo FROM planes_accion p
+        JOIN hallazgos h ON h.id=p.hallazgo_id
+        WHERE h.empresa_id=? ORDER BY h.id, p.id
+    """, (empresa_id,)).fetchall()
+    ultima = conn.execute(
+        "SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha DESC, id DESC LIMIT 1", (empresa_id,)
+    ).fetchone()
+    conn.close()
+    planes_por_h = {}
+    for pl in planes_data:
+        planes_por_h.setdefault(pl["hallazgo_ref"], []).append(pl)
+    return empresa, hallazgos_data, planes_por_h, planes_data, ultima
+
+
+@app.route("/empresas/<int:empresa_id>/informe")
+@roles_required(*EDITORES)
+def informe_empresa(empresa_id):
+    datos = datos_informe(empresa_id)
+    if not datos:
+        flash("La empresa no existe.", "danger")
+        return redirect(url_for("empresas"))
+    empresa, hallazgos_data, planes_por_h, planes_data, ultima = datos
+    return render_template(
+        "informe.html", empresa=empresa, hallazgos=hallazgos_data, planes_por_h=planes_por_h,
+        planes=planes_data, ultima=ultima, hoy=date.today().isoformat()
+    )
+
+
+@app.route("/empresas/<int:empresa_id>/informe.csv")
+@roles_required(*EDITORES)
+def informe_csv(empresa_id):
+    datos = datos_informe(empresa_id)
+    if not datos:
+        flash("La empresa no existe.", "danger")
+        return redirect(url_for("empresas"))
+    empresa, hallazgos_data, planes_por_h, _, _ = datos
+    salida = io.StringIO()
+    escritor = csv.writer(salida, delimiter=";")
+    escritor.writerow([
+        "Empresa", "Código", "Dominio", "Hallazgo", "Descripción", "Probabilidad", "Impacto", "Riesgo",
+        "Criticidad", "Estado", "Recomendación", "Cumplimiento", "Observación de verificación",
+        "Acción", "Responsable", "Fecha límite", "Avance %"
+    ])
+    for h in hallazgos_data:
+        base = [empresa["razon_social"], h["codigo"], h["dominio"] or "", h["titulo"], h["descripcion"] or "",
+                h["probabilidad"], h["impacto"], h["riesgo"], h["criticidad"], h["estado"],
+                h["recomendacion"] or "", h["cumplimiento"] or "Sin verificar", h["observacion_verificacion"] or ""]
+        acciones = planes_por_h.get(h["id"], [])
+        if not acciones:
+            escritor.writerow(base + ["Sin acción registrada", "", "", ""])
+        for pl in acciones:
+            escritor.writerow(base + [pl["actividad"], pl["responsable"] or "", pl["fecha_limite"] or "", pl["avance"]])
+    contenido = "\ufeff" + salida.getvalue()
+    return Response(
+        contenido, mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=informe_empresa_{empresa_id}.csv"}
+    )
+
 @app.route("/empresas/nueva", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def nueva_empresa():
     conn = get_db()
     conn.execute("""
@@ -409,7 +503,7 @@ def nueva_empresa():
 
 
 @app.route("/evaluaciones")
-@login_required
+@roles_required(*EDITORES)
 def evaluaciones():
     conn = get_db()
     data = conn.execute("""
@@ -423,7 +517,7 @@ def evaluaciones():
 
 
 @app.route("/evaluaciones/nueva")
-@login_required
+@roles_required(*EDITORES)
 def nueva_evaluacion_form():
     conn = get_db()
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
@@ -433,11 +527,119 @@ def nueva_evaluacion_form():
     agrupados = {}
     for c in controles:
         agrupados.setdefault(c["dominio"], []).append(c)
-    return render_template("evaluacion_form.html", empresas=empresas_data, grupos=agrupados)
+    return render_template(
+        "evaluacion_form.html", empresas=empresas_data, grupos=agrupados,
+        evaluacion=None, respuestas={}, action=url_for("guardar_evaluacion")
+    )
+
+
+@app.route("/evaluaciones/<int:evaluacion_id>/editar")
+@roles_required(*EDITORES)
+def editar_evaluacion(evaluacion_id):
+    conn = get_db()
+    ev = conn.execute("SELECT * FROM evaluaciones WHERE id=?", (evaluacion_id,)).fetchone()
+    if not ev:
+        conn.close()
+        flash("La evaluación no existe.", "danger")
+        return redirect(url_for("evaluaciones"))
+    empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
+    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    filas = conn.execute(
+        "SELECT control_id, resultado, observacion FROM respuestas WHERE evaluacion_id=?", (evaluacion_id,)
+    ).fetchall()
+    conn.close()
+
+    agrupados = {}
+    for c in controles:
+        agrupados.setdefault(c["dominio"], []).append(c)
+    respuestas = {f["control_id"]: {"resultado": f["resultado"], "observacion": f["observacion"] or ""} for f in filas}
+    return render_template(
+        "evaluacion_form.html", empresas=empresas_data, grupos=agrupados, evaluacion=ev,
+        respuestas=respuestas, action=url_for("actualizar_evaluacion", evaluacion_id=evaluacion_id)
+    )
+
+
+@app.route("/evaluaciones/<int:evaluacion_id>/actualizar", methods=["POST"])
+@roles_required(*EDITORES)
+def actualizar_evaluacion(evaluacion_id):
+    conn = get_db()
+    ev = conn.execute("SELECT * FROM evaluaciones WHERE id=?", (evaluacion_id,)).fetchone()
+    if not ev:
+        conn.close()
+        flash("La evaluación no existe.", "danger")
+        return redirect(url_for("evaluaciones"))
+
+    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    fecha_eval = request.form.get("fecha") or ev["fecha"]
+    total = 0
+    respuestas = []
+    for c in controles:
+        key = f"control_{c['id']}"
+        if key not in request.form:
+            continue  # Sin responder: no entra al cálculo.
+        resultado = int(request.form[key])
+        total += resultado
+        respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
+
+    if not respuestas:
+        conn.close()
+        flash("Debes responder al menos un control para recalcular el índice.", "danger")
+        return redirect(url_for("editar_evaluacion", evaluacion_id=evaluacion_id))
+
+    puntaje = round((total / (len(respuestas) * 2)) * 100)
+    nivel = nivel_desde_puntaje(puntaje)
+    hoy = date.today().isoformat()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM respuestas WHERE evaluacion_id=?", (evaluacion_id,))
+    cur.execute("""
+        UPDATE evaluaciones SET fecha=?, puntaje=?, nivel=?, observacion=? WHERE id=?
+    """, (fecha_eval, puntaje, nivel, f"Editada el {hoy} por {session['user']['name']}", evaluacion_id))
+    for control_id, resultado, observacion in respuestas:
+        cur.execute("""
+            INSERT INTO respuestas (evaluacion_id, control_id, resultado, observacion)
+            VALUES (?, ?, ?, ?)
+        """, (evaluacion_id, control_id, resultado, observacion))
+
+    # Sincroniza hallazgos generados por esta evaluación con las nuevas respuestas.
+    existentes = {h["control_id"]: h for h in cur.execute(
+        "SELECT id, control_id, estado FROM hallazgos WHERE evaluacion_id=? AND control_id IS NOT NULL",
+        (evaluacion_id,)).fetchall()}
+    controles_por_id = {c["id"]: c for c in controles}
+    for control_id, resultado, observacion in respuestas:
+        h = existentes.get(control_id)
+        if resultado == 0 and h is None:
+            control = controles_por_id[control_id]
+            next_num = cur.execute("SELECT COUNT(*) + 1 n FROM hallazgos").fetchone()["n"]
+            cur.execute("""
+                INSERT INTO hallazgos
+                (empresa_id, codigo, titulo, descripcion, probabilidad, impacto, riesgo,
+                 criticidad, recomendacion, estado, control_id, evaluacion_id)
+                VALUES (?, ?, ?, ?, 3, 3, 9, 'Alto', ?, 'Pendiente', ?, ?)
+            """, (
+                ev["empresa_id"], f"CYB-{next_num:03d}",
+                f"Control no implementado: {control['pregunta'][:85]}",
+                f"Durante la reevaluación del {hoy} se registró 'No cumple' para el control del dominio {control['dominio']}. "
+                + (f"Observación: {observacion}" if observacion else ""),
+                RECOMENDACIONES_CONTROLES.get(control["pregunta"],
+                    "Definir una acción correctiva, responsable y fecha de implementación."),
+                control_id, evaluacion_id
+            ))
+        elif resultado == 0 and h is not None and h["estado"] == "Cerrado":
+            cur.execute("UPDATE hallazgos SET estado='Pendiente', cumplimiento=NULL WHERE id=?", (h["id"],))
+        elif resultado > 0 and h is not None and h["estado"] != "Cerrado":
+            cur.execute("""
+                UPDATE hallazgos SET estado='Cerrado', cumplimiento='Cumplió a cabalidad',
+                observacion_verificacion=? WHERE id=?
+            """, (f"Corregido en la reevaluación del {hoy}.", h["id"]))
+
+    conn.commit()
+    conn.close()
+    flash(f"Evaluación actualizada. Índice TotalSecurity: {puntaje}/100 · Nivel {nivel}.", "success")
+    return redirect(url_for("resultado_evaluacion", evaluacion_id=evaluacion_id))
 
 
 @app.route("/evaluaciones/guardar", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def guardar_evaluacion():
     empresa_id = int(request.form["empresa_id"])
     fecha_eval = request.form.get("fecha") or date.today().isoformat()
@@ -446,16 +648,25 @@ def guardar_evaluacion():
     controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
 
     total = 0
-    maximo = len(controles) * 2
     respuestas = []
 
     for c in controles:
         key = f"control_{c['id']}"
-        resultado = int(request.form.get(key, 0))
+        # Sin responder: no entra al cálculo ni genera hallazgos.
+        if key not in request.form:
+            continue
+        resultado = int(request.form[key])
         total += resultado
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
 
-    puntaje = round((total / maximo) * 100) if maximo else 0
+    if not respuestas:
+        conn.close()
+        flash("Debes responder al menos un control con evidencia para calcular el índice.", "danger")
+        return redirect(url_for("nueva_evaluacion_form"))
+
+    no_respondidos = len(controles) - len(respuestas)
+    maximo = len(respuestas) * 2
+    puntaje = round((total / maximo) * 100)
     nivel = nivel_desde_puntaje(puntaje)
 
     cur = conn.cursor()
@@ -504,7 +715,8 @@ def guardar_evaluacion():
     conn.commit()
     conn.close()
 
-    flash(f"Evaluación completada. Índice CyberSafe: {puntaje}/100 · Nivel {nivel}.", "success")
+    aviso = f" {no_respondidos} control(es) sin responder no fueron considerados." if no_respondidos else ""
+    flash(f"Evaluación completada. Índice TotalSecurity: {puntaje}/100 · Nivel {nivel}.{aviso}", "success")
     return redirect(url_for("resultado_evaluacion", evaluacion_id=evaluacion_id))
 
 
@@ -545,19 +757,22 @@ def resultado_evaluacion(evaluacion_id):
 @app.route("/hallazgos")
 @login_required
 def hallazgos():
+    empresa_id = request.args.get("empresa", type=int)
     conn = get_db()
     data = conn.execute("""
         SELECT h.*, em.razon_social
         FROM hallazgos h JOIN empresas em ON em.id=h.empresa_id
+        WHERE (? IS NULL OR h.empresa_id=?)
         ORDER BY CASE h.criticidad WHEN 'Crítico' THEN 1 WHEN 'Alto' THEN 2 WHEN 'Medio' THEN 3 ELSE 4 END, h.id DESC
-    """).fetchall()
+    """, (empresa_id, empresa_id)).fetchall()
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
     conn.close()
-    return render_template("hallazgos.html", hallazgos=data, empresas=empresas_data)
+    return render_template("hallazgos.html", hallazgos=data, empresas=empresas_data, empresa_id=empresa_id,
+                           cumplimientos=CUMPLIMIENTOS)
 
 
 @app.route("/hallazgos/nuevo", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def nuevo_hallazgo():
     prob = int(request.form["probabilidad"])
     impact = int(request.form["impacto"])
@@ -582,8 +797,33 @@ def nuevo_hallazgo():
     return redirect(url_for("hallazgos"))
 
 
+CUMPLIMIENTOS = ("Cumplió a cabalidad", "Cumplimiento parcial", "No cumplió")
+
+
+@app.route("/hallazgos/<int:hallazgo_id>/verificar", methods=["POST"])
+@roles_required(*EDITORES)
+def verificar_hallazgo(hallazgo_id):
+    observacion = request.form.get("observacion", "").strip()
+    cumplimiento = request.form.get("cumplimiento", "")
+    if cumplimiento not in CUMPLIMIENTOS:
+        cumplimiento = None
+    cerrar = request.form.get("accion") == "cerrar"
+    conn = get_db()
+    conn.execute(
+        "UPDATE hallazgos SET observacion_verificacion=?, cumplimiento=? WHERE id=?",
+        (observacion, cumplimiento, hallazgo_id)
+    )
+    if cerrar:
+        conn.execute("UPDATE hallazgos SET estado='Cerrado' WHERE id=?", (hallazgo_id,))
+    conn.commit()
+    conn.close()
+    flash("Verificación guardada." + (" Hallazgo cerrado." if cerrar else ""), "success")
+    empresa_id = request.form.get("empresa", type=int)
+    return redirect(url_for("hallazgos", empresa=empresa_id) if empresa_id else url_for("hallazgos"))
+
+
 @app.route("/hallazgos/<int:hallazgo_id>/cerrar", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def cerrar_hallazgo(hallazgo_id):
     conn = get_db()
     conn.execute("UPDATE hallazgos SET estado='Cerrado' WHERE id=?", (hallazgo_id,))
@@ -596,26 +836,29 @@ def cerrar_hallazgo(hallazgo_id):
 @app.route("/planes")
 @login_required
 def planes():
+    empresa_id = request.args.get("empresa", type=int)
     conn = get_db()
     data = conn.execute("""
         SELECT p.*, h.codigo, h.titulo, h.criticidad, h.estado AS hallazgo_estado, em.razon_social
         FROM planes_accion p
         JOIN hallazgos h ON h.id=p.hallazgo_id
         JOIN empresas em ON em.id=h.empresa_id
+        WHERE (? IS NULL OR h.empresa_id=?)
         ORDER BY p.fecha_limite
-    """).fetchall()
+    """, (empresa_id, empresa_id)).fetchall()
     hallazgos_data = conn.execute("""
         SELECT h.id, h.codigo, h.titulo, em.razon_social
         FROM hallazgos h JOIN empresas em ON em.id=h.empresa_id
         WHERE h.estado!='Cerrado'
         ORDER BY h.id DESC
     """).fetchall()
+    empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
     conn.close()
-    return render_template("planes.html", planes=data, hallazgos=hallazgos_data)
+    return render_template("planes.html", planes=data, hallazgos=hallazgos_data, empresas=empresas_data, empresa_id=empresa_id)
 
 
 @app.route("/planes/nuevo", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def nuevo_plan():
     avance = max(0, min(100, int(request.form.get("avance") or 0)))
     estado = "Completado" if avance == 100 else ("En progreso" if avance > 0 else "Pendiente")
@@ -634,7 +877,7 @@ def nuevo_plan():
 
 
 @app.route("/planes/<int:plan_id>/avance", methods=["POST"])
-@login_required
+@roles_required(*EDITORES)
 def actualizar_avance(plan_id):
     avance = max(0, min(100, int(request.form["avance"])))
     estado = "Completado" if avance == 100 else ("En progreso" if avance > 0 else "Pendiente")
@@ -650,7 +893,42 @@ def actualizar_avance(plan_id):
     return redirect(url_for("planes"))
 
 
+@app.route("/usuarios")
+@roles_required("admin")
+def usuarios():
+    conn = get_db()
+    data = conn.execute("SELECT id, nombre, correo, rol, activo FROM usuarios ORDER BY nombre").fetchall()
+    conn.close()
+    return render_template("usuarios.html", usuarios=data, roles=ROLES)
+
+
+@app.route("/usuarios/nuevo", methods=["POST"])
+@roles_required("admin")
+def nuevo_usuario():
+    nombre = request.form.get("nombre", "").strip()
+    correo = request.form.get("correo", "").strip().lower()
+    password = request.form.get("password", "")
+    rol = request.form.get("rol", "")
+    if not (nombre and correo and len(password) >= 8 and rol in ROLES):
+        flash("Revisa los datos: contraseña de mínimo 8 caracteres y perfil válido.", "danger")
+        return redirect(url_for("usuarios"))
+
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO usuarios (nombre, correo, password_hash, rol) VALUES (?, ?, ?, ?)",
+            (nombre, correo, generate_password_hash(password), rol)
+        )
+        conn.commit()
+        flash("Usuario creado correctamente.", "success")
+    except sqlite3.IntegrityError:
+        flash("Ya existe un usuario con ese correo.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("usuarios"))
+
+
 init_db()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=os.environ.get("FLASK_DEBUG") == "1")

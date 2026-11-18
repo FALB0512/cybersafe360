@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Resultado de evaluación | CyberSafe 360{% endblock %}
+{% block title %}Resultado de evaluación | TotalSecurity{% endblock %}
 {% block page_title %}Resultado de evaluación{% endblock %}
 
 {% block content %}
@@ -9,13 +9,16 @@
         <h3 class="mb-1">{{ evaluacion['razon_social'] }}</h3>
         <div class="text-secondary">Evaluación realizada el {{ evaluacion['fecha'] }}</div>
     </div>
-    <a class="btn btn-outline-primary" href="{{ url_for('evaluaciones') }}">Volver al historial</a>
+    <div class="d-flex gap-2">
+        <a class="btn btn-primary" href="{{ url_for('editar_evaluacion', evaluacion_id=evaluacion['id']) }}"><i class="bi bi-pencil-square me-1"></i>Editar evaluación</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('evaluaciones') }}">Volver al historial</a>
+    </div>
 </div>
 
 <div class="row g-4 mb-4">
     <div class="col-lg-4">
         <div class="score-card h-100">
-            <div class="small text-secondary">Índice CyberSafe calculado</div>
+            <div class="small text-secondary">Índice TotalSecurity calculado</div>
             <div class="score-number">{{ evaluacion['puntaje'] }}</div>
             <div class="score-label">sobre 100</div>
             <span class="risk-pill risk-{{ evaluacion['nivel']|lower|replace('í','i')|replace('ó','o') }}">{{ evaluacion['nivel'] }}</span>

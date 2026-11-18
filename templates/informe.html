@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informe de hallazgos · {{ empresa['razon_social'] }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+body{font-family:Manrope,Arial,sans-serif;color:#0f1b33;margin:0;padding:32px;font-size:13px;background:#fff}
+h1{font-size:22px;margin:0 0 4px} h2{font-size:15px;margin:24px 0 8px;color:#002060;text-transform:uppercase;letter-spacing:.04em}
+.top{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #0060c0;padding-bottom:12px}
+.muted{color:#64748b}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th,td{border:1px solid #e3e9f2;padding:6px 8px;vertical-align:top;text-align:left}
+th{background:#f3f6fb;font-size:11px;text-transform:uppercase}
+.card{border:1px solid #e3e9f2;border-radius:8px;padding:12px;margin-bottom:14px;page-break-inside:avoid}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-weight:800;font-size:11px;background:#e6f4fd;color:#0060c0}
+.toolbar{margin-bottom:18px}
+.toolbar button{background:#0060c0;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
+@media print{.toolbar{display:none} body{padding:10mm}}
+</style>
+</head>
+<body>
+<div class="toolbar">
+    <button onclick="window.print()">Imprimir o guardar como PDF</button>
+    <a href="{{ url_for('informe_csv', empresa_id=empresa['id']) }}" style="margin-left:12px">Descargar CSV</a>
+</div>
+
+<div class="top">
+    <div>
+        <h1>Informe de hallazgos y plan de acción</h1>
+        <div class="muted">{{ empresa['razon_social'] }} · NIT {{ empresa['nit'] or '-' }} · {{ empresa['sector'] or '-' }}</div>
+    </div>
+    <div style="text-align:right">
+        <div><strong>Índice:</strong> {% if ultima %}{{ ultima['puntaje'] }}/100 · {{ ultima['nivel'] }}{% else %}Sin evaluación{% endif %}</div>
+        <div class="muted">Última evaluación: {{ ultima['fecha'] if ultima else '-' }}</div>
+        <div class="muted">Generado: {{ hoy }}</div>
+    </div>
+</div>
+
+<h2>Resumen</h2>
+<table>
+    <tr><th>Total hallazgos</th><th>Abiertos</th><th>Cerrados</th><th>Acciones del plan</th></tr>
+    <tr>
+        <td>{{ hallazgos|length }}</td>
+        <td>{{ hallazgos|rejectattr('estado', 'equalto', 'Cerrado')|list|length }}</td>
+        <td>{{ hallazgos|selectattr('estado', 'equalto', 'Cerrado')|list|length }}</td>
+        <td>{{ planes|length }}</td>
+    </tr>
+</table>
+
+<h2>Detalle por hallazgo</h2>
+{% for h in hallazgos %}
+<div class="card">
+    <div><span class="pill">{{ h['codigo'] }}</span> <strong>{{ h['titulo'] }}</strong></div>
+    {% if h['descripcion'] %}<div class="muted" style="margin-top:4px">{{ h['descripcion'] }}</div>{% endif %}
+    <table style="margin-top:8px">
+        <tr><th>Dominio</th><th>Probabilidad</th><th>Impacto</th><th>Riesgo</th><th>Criticidad</th><th>Estado</th></tr>
+        <tr><td>{{ h['dominio'] or '-' }}</td><td>{{ h['probabilidad'] }}</td><td>{{ h['impacto'] }}</td><td>{{ h['riesgo'] }}/16</td><td>{{ h['criticidad'] }}</td><td>{{ h['estado'] }}</td></tr>
+    </table>
+    <p><strong>Recomendación:</strong> {{ h['recomendacion'] or '-' }}</p>
+    <p><strong>Verificación:</strong> {{ h['cumplimiento'] or 'Sin verificar' }}{% if h['observacion_verificacion'] %} — {{ h['observacion_verificacion'] }}{% endif %}</p>
+    <table>
+        <tr><th>Acción a realizar</th><th>Responsable</th><th>Fecha límite</th><th>Avance</th><th>Estado</th></tr>
+        {% for p in planes_por_h.get(h['id'], []) %}
+        <tr><td>{{ p['actividad'] }}</td><td>{{ p['responsable'] or '-' }}</td><td>{{ p['fecha_limite'] or '-' }}</td><td>{{ p['avance'] }}%</td><td>{{ p['estado'] }}</td></tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">Sin acción registrada</td></tr>
+        {% endfor %}
+    </table>
+</div>
+{% else %}
+<p class="muted">La empresa no tiene hallazgos registrados.</p>
+{% endfor %}
+</body>
+</html>

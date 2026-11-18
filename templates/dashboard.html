@@ -1,8 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Dashboard | CyberSafe 360{% endblock %}
+{% block title %}Dashboard | TotalSecurity{% endblock %}
 {% block page_title %}Dashboard ejecutivo{% endblock %}
 
 {% block content %}
+<form method="get" class="d-flex align-items-center gap-2 mb-3">
+    <span class="small fw-bold text-secondary">Empresa</span>
+    <select name="empresa" class="form-select form-select-sm" style="width:auto;min-width:260px" onchange="this.form.submit()">
+        {% for e in empresas %}<option value="{{ e['id'] }}" {% if empresa['id'] == e['id'] %}selected{% endif %}>{{ e['razon_social'] }}</option>{% endfor %}
+    </select>
+    {% if puede_editar %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('empresa_panel', empresa_id=empresa['id']) }}">Abrir panel</a>{% endif %}
+</form>
 <div class="client-header">
     <div>
         <div class="small text-secondary">Empresa evaluada</div>
@@ -21,7 +28,7 @@
             <div class="small text-secondary">Índice de seguridad</div>
             <div class="score-number">{{ ultima['puntaje'] if ultima else 0 }}</div>
             <div class="score-label">sobre 100</div>
-            <span class="risk-pill risk-{{ (ultima['nivel'] if ultima else 'Crítico')|lower|replace('í','i')|replace('ó','o') }}">
+            <span class="risk-pill risk-{{ (ultima['nivel'] if ultima else 'Sin datos')|lower|replace('í','i')|replace('ó','o')|replace(' ','-') }}">
                 {{ ultima['nivel'] if ultima else 'Sin datos' }}
             </span>
             <p class="text-secondary mt-3 mb-0">
@@ -145,7 +152,7 @@ new Chart(ctx, {
     data: {
         labels: [{% for e in evaluaciones %}"{{ e['fecha'][5:7] }}/{{ e['fecha'][0:4] }}"{% if not loop.last %},{% endif %}{% endfor %}],
         datasets: [{
-            label: 'Índice CyberSafe',
+            label: 'Índice TotalSecurity',
             data: [{% for e in evaluaciones %}{{ e['puntaje'] }}{% if not loop.last %},{% endif %}{% endfor %}],
             tension: 0.35,
             fill: true,
