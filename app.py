@@ -386,10 +386,16 @@ def empresa_panel(empresa_id):
     abiertos = {c: sum(1 for h in hallazgos_emp if h["criticidad"] == c and h["estado"] != "Cerrado")
                 for c in ("Crítico", "Alto", "Medio")}
     avance = round(sum(p["avance"] for p in planes_emp) / len(planes_emp)) if planes_emp else 0
+    historial = []
+    for i, ev in enumerate(evaluaciones):
+        anterior = evaluaciones[i + 1] if i + 1 < len(evaluaciones) else None
+        historial.append({"ev": ev, "delta": (ev["puntaje"] - anterior["puntaje"]) if anterior else None})
     return render_template(
         "empresa.html", empresa=empresa, ultima=evaluaciones[0] if evaluaciones else None,
-        evaluaciones=evaluaciones, hallazgos=hallazgos_emp, planes=planes_emp,
-        abiertos=abiertos, avance=avance
+        evaluaciones=evaluaciones, historial=historial, hallazgos=hallazgos_emp, planes=planes_emp,
+        abiertos=abiertos, avance=avance,
+        grafico_fechas=[e["fecha"] for e in reversed(evaluaciones)],
+        grafico_valores=[e["puntaje"] for e in reversed(evaluaciones)]
     )
 
 
@@ -521,7 +527,115 @@ def nueva_evaluacion_form():
     agrupados = {}
     for c in controles:
         agrupados.setdefault(c["dominio"], []).append(c)
-    return render_template("evaluacion_form.html", empresas=empresas_data, grupos=agrupados)
+    return render_template(
+        "evaluacion_form.html", empresas=empresas_data, grupos=agrupados,
+        evaluacion=None, respuestas={}, action=url_for("guardar_evaluacion")
+    )
+
+
+@app.route("/evaluaciones/<int:evaluacion_id>/editar")
+@roles_required(*EDITORES)
+def editar_evaluacion(evaluacion_id):
+    conn = get_db()
+    ev = conn.execute("SELECT * FROM evaluaciones WHERE id=?", (evaluacion_id,)).fetchone()
+    if not ev:
+        conn.close()
+        flash("La evaluación no existe.", "danger")
+        return redirect(url_for("evaluaciones"))
+    empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
+    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    filas = conn.execute(
+        "SELECT control_id, resultado, observacion FROM respuestas WHERE evaluacion_id=?", (evaluacion_id,)
+    ).fetchall()
+    conn.close()
+
+    agrupados = {}
+    for c in controles:
+        agrupados.setdefault(c["dominio"], []).append(c)
+    respuestas = {f["control_id"]: {"resultado": f["resultado"], "observacion": f["observacion"] or ""} for f in filas}
+    return render_template(
+        "evaluacion_form.html", empresas=empresas_data, grupos=agrupados, evaluacion=ev,
+        respuestas=respuestas, action=url_for("actualizar_evaluacion", evaluacion_id=evaluacion_id)
+    )
+
+
+@app.route("/evaluaciones/<int:evaluacion_id>/actualizar", methods=["POST"])
+@roles_required(*EDITORES)
+def actualizar_evaluacion(evaluacion_id):
+    conn = get_db()
+    ev = conn.execute("SELECT * FROM evaluaciones WHERE id=?", (evaluacion_id,)).fetchone()
+    if not ev:
+        conn.close()
+        flash("La evaluación no existe.", "danger")
+        return redirect(url_for("evaluaciones"))
+
+    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    fecha_eval = request.form.get("fecha") or ev["fecha"]
+    total = 0
+    respuestas = []
+    for c in controles:
+        key = f"control_{c['id']}"
+        if key not in request.form:
+            continue  # Sin responder: no entra al cálculo.
+        resultado = int(request.form[key])
+        total += resultado
+        respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
+
+    if not respuestas:
+        conn.close()
+        flash("Debes responder al menos un control para recalcular el índice.", "danger")
+        return redirect(url_for("editar_evaluacion", evaluacion_id=evaluacion_id))
+
+    puntaje = round((total / (len(respuestas) * 2)) * 100)
+    nivel = nivel_desde_puntaje(puntaje)
+    hoy = date.today().isoformat()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM respuestas WHERE evaluacion_id=?", (evaluacion_id,))
+    cur.execute("""
+        UPDATE evaluaciones SET fecha=?, puntaje=?, nivel=?, observacion=? WHERE id=?
+    """, (fecha_eval, puntaje, nivel, f"Editada el {hoy} por {session['user']['name']}", evaluacion_id))
+    for control_id, resultado, observacion in respuestas:
+        cur.execute("""
+            INSERT INTO respuestas (evaluacion_id, control_id, resultado, observacion)
+            VALUES (?, ?, ?, ?)
+        """, (evaluacion_id, control_id, resultado, observacion))
+
+    # Sincroniza hallazgos generados por esta evaluación con las nuevas respuestas.
+    existentes = {h["control_id"]: h for h in cur.execute(
+        "SELECT id, control_id, estado FROM hallazgos WHERE evaluacion_id=? AND control_id IS NOT NULL",
+        (evaluacion_id,)).fetchall()}
+    controles_por_id = {c["id"]: c for c in controles}
+    for control_id, resultado, observacion in respuestas:
+        h = existentes.get(control_id)
+        if resultado == 0 and h is None:
+            control = controles_por_id[control_id]
+            next_num = cur.execute("SELECT COUNT(*) + 1 n FROM hallazgos").fetchone()["n"]
+            cur.execute("""
+                INSERT INTO hallazgos
+                (empresa_id, codigo, titulo, descripcion, probabilidad, impacto, riesgo,
+                 criticidad, recomendacion, estado, control_id, evaluacion_id)
+                VALUES (?, ?, ?, ?, 3, 3, 9, 'Alto', ?, 'Pendiente', ?, ?)
+            """, (
+                ev["empresa_id"], f"CYB-{next_num:03d}",
+                f"Control no implementado: {control['pregunta'][:85]}",
+                f"Durante la reevaluación del {hoy} se registró 'No cumple' para el control del dominio {control['dominio']}. "
+                + (f"Observación: {observacion}" if observacion else ""),
+                RECOMENDACIONES_CONTROLES.get(control["pregunta"],
+                    "Definir una acción correctiva, responsable y fecha de implementación."),
+                control_id, evaluacion_id
+            ))
+        elif resultado == 0 and h is not None and h["estado"] == "Cerrado":
+            cur.execute("UPDATE hallazgos SET estado='Pendiente', cumplimiento=NULL WHERE id=?", (h["id"],))
+        elif resultado > 0 and h is not None and h["estado"] != "Cerrado":
+            cur.execute("""
+                UPDATE hallazgos SET estado='Cerrado', cumplimiento='Cumplió a cabalidad',
+                observacion_verificacion=? WHERE id=?
+            """, (f"Corregido en la reevaluación del {hoy}.", h["id"]))
+
+    conn.commit()
+    conn.close()
+    flash(f"Evaluación actualizada. Índice TotalSecurity: {puntaje}/100 · Nivel {nivel}.", "success")
+    return redirect(url_for("resultado_evaluacion", evaluacion_id=evaluacion_id))
 
 
 @app.route("/evaluaciones/guardar", methods=["POST"])
