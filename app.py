@@ -500,6 +500,9 @@ def informe_csv(empresa_id):
 @app.route("/empresas/nueva", methods=["POST"])
 @roles_required(*EDITORES)
 def nueva_empresa():
+    if not request.form.get("razon_social", "").strip():
+        flash("La razón social de la empresa es obligatoria.", "danger")
+        return redirect(url_for("empresas"))
     conn = get_db()
     conn.execute("""
         INSERT INTO empresas (razon_social, nit, sector, empleados, contacto, correo, estado)
@@ -601,6 +604,25 @@ def historial():
         empresa_id=empresa["id"] if empresa else None
     )
 
+def validar_evaluacion(form, controles, exige_empresa):
+    """Devuelve el mensaje de error con el dominio y control que faltan, o None si está completa."""
+    errores = []
+    if exige_empresa and not form.get("empresa_id"):
+        errores.append("Selecciona la empresa a evaluar.")
+    if not form.get("fecha"):
+        errores.append("Ingresa la fecha de la evaluación.")
+    faltan = {}
+    contador = {}
+    for c in controles:
+        contador[c["dominio"]] = contador.get(c["dominio"], 0) + 1
+        if f"control_{c['id']}" not in form:
+            faltan.setdefault(c["dominio"], []).append(str(contador[c["dominio"]]))
+    if faltan:
+        detalle = "; ".join(f"{dom} (control {', '.join(nums)})" for dom, nums in faltan.items())
+        errores.append("Faltan respuestas por marcar en: " + detalle + ".")
+    return " ".join(errores) if errores else None
+
+
 def sincronizar_hallazgos(cur, empresa_id, evaluacion_id, respuestas, controles_por_id, hoy):
     """La evaluación más reciente define qué hallazgos siguen abiertos en la empresa."""
     abiertos = {
@@ -676,21 +698,18 @@ def actualizar_evaluacion(evaluacion_id):
         return redirect(url_for("evaluaciones"))
 
     controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
-    fecha_eval = request.form.get("fecha") or ev["fecha"]
+    error = validar_evaluacion(request.form, controles, exige_empresa=False)
+    if error:
+        conn.close()
+        flash(error, "danger")
+        return redirect(url_for("editar_evaluacion", evaluacion_id=evaluacion_id))
+    fecha_eval = request.form["fecha"]
     total = 0
     respuestas = []
     for c in controles:
-        key = f"control_{c['id']}"
-        if key not in request.form:
-            continue  # Sin responder: no entra al cálculo.
-        resultado = int(request.form[key])
+        resultado = int(request.form[f"control_{c['id']}"])
         total += resultado
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
-
-    if not respuestas:
-        conn.close()
-        flash("Debes responder al menos un control para recalcular el índice.", "danger")
-        return redirect(url_for("editar_evaluacion", evaluacion_id=evaluacion_id))
 
     puntaje = round((total / (len(respuestas) * 2)) * 100)
     nivel = nivel_desde_puntaje(puntaje)
@@ -718,28 +737,22 @@ def actualizar_evaluacion(evaluacion_id):
 @app.route("/evaluaciones/guardar", methods=["POST"])
 @roles_required(*EDITORES)
 def guardar_evaluacion():
-    empresa_id = int(request.form["empresa_id"])
-    fecha_eval = request.form.get("fecha") or date.today().isoformat()
-
     conn = get_db()
     controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    error = validar_evaluacion(request.form, controles, exige_empresa=True)
+    if error:
+        conn.close()
+        flash(error, "danger")
+        return redirect(url_for("nueva_evaluacion_form"))
+    empresa_id = int(request.form["empresa_id"])
+    fecha_eval = request.form["fecha"]
 
     total = 0
     respuestas = []
-
     for c in controles:
-        key = f"control_{c['id']}"
-        # Sin responder: no entra al cálculo ni genera hallazgos.
-        if key not in request.form:
-            continue
-        resultado = int(request.form[key])
+        resultado = int(request.form[f"control_{c['id']}"])
         total += resultado
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
-
-    if not respuestas:
-        conn.close()
-        flash("Debes responder al menos un control con evidencia para calcular el índice.", "danger")
-        return redirect(url_for("nueva_evaluacion_form"))
 
     no_respondidos = len(controles) - len(respuestas)
     maximo = len(respuestas) * 2
@@ -825,6 +838,9 @@ def hallazgos():
 @app.route("/hallazgos/nuevo", methods=["POST"])
 @roles_required(*EDITORES)
 def nuevo_hallazgo():
+    if not request.form.get("titulo", "").strip():
+        flash("El título del hallazgo es obligatorio.", "danger")
+        return redirect(url_for("hallazgos"))
     prob = int(request.form["probabilidad"])
     impact = int(request.form["impacto"])
     riesgo = prob * impact
@@ -911,6 +927,9 @@ def planes():
 @app.route("/planes/nuevo", methods=["POST"])
 @roles_required(*EDITORES)
 def nuevo_plan():
+    if not request.form.get("actividad", "").strip():
+        flash("La actividad del plan es obligatoria.", "danger")
+        return redirect(url_for("planes"))
     avance = max(0, min(100, int(request.form.get("avance") or 0)))
     estado = "Completado" if avance == 100 else ("En progreso" if avance > 0 else "Pendiente")
     conn = get_db()

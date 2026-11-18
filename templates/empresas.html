@@ -27,7 +27,7 @@
                 <td><span class="status-badge">{{ e['estado'] }}</span></td>
                 <td class="text-nowrap">
                     <a class="btn btn-sm btn-outline-primary" href="{{ url_for('empresa_panel', empresa_id=e['id']) }}">Abrir panel</a>
-                    <form method="post" action="{{ url_for('eliminar_empresa', empresa_id=e['id']) }}" class="d-inline" onsubmit="return confirm('¿Eliminar esta empresa y toda su información?');">
+                    <form method="post" action="{{ url_for('eliminar_empresa', empresa_id=e['id']) }}" class="d-inline" data-confirm="¿Eliminar esta empresa y toda su información?">
                         <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                     </form>
                 </td>

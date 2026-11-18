@@ -3,12 +3,12 @@
 {% block page_title %}{{ 'Editar evaluación' if evaluacion else 'Nueva evaluación de ciberseguridad' }}{% endblock %}
 
 {% block content %}
-<form method="post" action="{{ action }}">
+<form method="post" action="{{ action }}" id="formEvaluacion" novalidate>
 <div class="panel-card mb-4">
     <div class="row g-3 align-items-end">
         <div class="col-lg-8">
             <label class="form-label">Empresa</label>
-            <select class="form-select" name="empresa_id" required>
+            <select class="form-select" name="empresa_id">
                 {% for e in empresas %}
                 <option value="{{ e['id'] }}" {% if evaluacion and evaluacion['empresa_id'] == e['id'] %}selected{% endif %}>{{ e['razon_social'] }} · {{ e['sector'] }}</option>
                 {% endfor %}
@@ -33,18 +33,19 @@
     </div>
 </div>
 
+<div id="validacionBox" class="ts-validacion" hidden></div>
 {% for dominio, controles in grupos.items() %}
-<div class="panel-card mb-4">
+<div class="panel-card mb-4" data-domain-panel data-dominio="{{ dominio }}">
     <div class="panel-head">
         <div>
             <div class="domain-kicker">DOMINIO {{ loop.index }}</div>
             <h5>{{ dominio }}</h5>
         </div>
-        <span class="control-count">{{ controles|length }} controles</span>
+        <span><span class="control-count">{{ controles|length }} controles</span><span class="pend-badge" data-pendientes>{{ controles|length }} sin marcar</span></span>
     </div>
 
     {% for c in controles %}
-    <div class="control-item">
+    <div class="control-item" id="control-{{ c['id'] }}" data-num="{{ loop.index }}">
         <div class="control-question">
             <span class="control-num">{{ loop.index }}</span>
             <div>
@@ -56,7 +57,7 @@
 
         <div class="control-options">
             <label class="option-card option-good">
-                <input type="radio" name="control_{{ c['id'] }}" value="2" required {% if r and r['resultado'] == 2 %}checked{% endif %}>
+                <input type="radio" name="control_{{ c['id'] }}" value="2" {% if r and r['resultado'] == 2 %}checked{% endif %}>
                 <span><i class="bi bi-check-circle-fill"></i> Cumple</span>
             </label>
             <label class="option-card option-partial">
@@ -83,4 +84,52 @@
     </button>
 </div>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var form = document.getElementById('formEvaluacion');
+    if (!form) return;
+    var caja = document.getElementById('validacionBox');
+    form.addEventListener('submit', function (e) {
+        var errores = [];
+        if (!form.querySelector('[name=empresa_id]').value) errores.push('Selecciona la empresa a evaluar.');
+        if (!form.querySelector('[name=fecha]').value) errores.push('Ingresa la fecha de la evaluación.');
+        var faltan = [];
+        form.querySelectorAll('.control-item').forEach(function (item) {
+            var marcado = item.querySelector('input[type=radio]:checked');
+            item.classList.toggle('control-missing', !marcado);
+            if (!marcado) faltan.push(item);
+        });
+        form.querySelectorAll('[data-domain-panel]').forEach(function (p) {
+            var n = p.querySelectorAll('.control-missing').length;
+            var b = p.querySelector('[data-pendientes]');
+            b.textContent = n ? n + ' sin marcar' : 'Completo';
+            b.classList.toggle('pend-ok', n === 0);
+        });
+        if (!errores.length && !faltan.length) return;
+        e.preventDefault();
+        caja.hidden = false;
+        caja.innerHTML = '';
+        var h = document.createElement('h6');
+        h.textContent = 'No se puede calcular el índice todavía';
+        caja.appendChild(h);
+        var ul = document.createElement('ul');
+        errores.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+        faltan.forEach(function (item) {
+            var li = document.createElement('li');
+            var a = document.createElement('a');
+            a.href = '#' + item.id;
+            a.textContent = item.closest('[data-dominio]').dataset.dominio + ' · control ' + item.dataset.num + ': ' + item.querySelector('strong').textContent;
+            li.appendChild(a);
+            ul.appendChild(li);
+        });
+        caja.appendChild(ul);
+        var total = faltan.length;
+        window.tsToast('danger', total ? 'Faltan ' + total + ' control(es) por marcar' : 'Revisa los datos de la evaluación');
+        (total ? faltan[0] : caja).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+})();
+</script>
 {% endblock %}

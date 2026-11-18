@@ -180,3 +180,23 @@ a{color:var(--blue)}
 .sidebar .nav{flex:0 0 auto}
 .sidebar-footer{flex-shrink:0;margin-top:auto;padding-top:14px;padding-bottom:6px}
 .sidebar-footer .logout-link{margin-top:10px}
+
+/* Avisos propios de la plataforma */
+.ts-toasts{position:fixed;top:18px;right:18px;z-index:2000;display:grid;gap:10px;width:min(380px,calc(100vw - 36px))}
+.ts-toast{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:start;background:#fff;border-radius:14px;padding:14px 12px 14px 14px;box-shadow:0 18px 40px rgba(0,16,64,.18);border-left:5px solid var(--blue);animation:tsIn .25s ease;color:var(--text);font-size:13.5px;font-weight:600;line-height:1.45}
+.ts-toast .ts-ico{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--primary-soft);color:var(--blue)}
+.ts-toast.ts-success{border-left-color:#0f7a55}.ts-toast.ts-success .ts-ico{background:var(--success-soft);color:var(--success)}
+.ts-toast.ts-danger{border-left-color:#b42318}.ts-toast.ts-danger .ts-ico{background:var(--critical-soft);color:var(--critical)}
+.ts-toast.ts-warn{border-left-color:#c2410c}.ts-toast.ts-warn .ts-ico{background:var(--high-soft);color:var(--high)}
+.ts-x{background:none;border:0;font-size:20px;color:var(--muted);line-height:1;padding:0 4px}
+.ts-out{opacity:0;transform:translateX(14px);transition:.3s}
+@keyframes tsIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.ts-confirm .modal-body{padding:28px 28px 8px;text-align:center}
+.ts-confirm-ico{width:56px;height:56px;border-radius:50%;background:var(--critical-soft);color:var(--critical);display:grid;place-items:center;font-size:24px;margin:0 auto 14px}
+.ts-validacion{background:#fff5f5;border:1px solid #f3c2bd;border-radius:16px;padding:16px 18px;margin-bottom:20px;color:#7a1d15}
+.ts-validacion h6{font-weight:800;margin:0 0 8px}
+.ts-validacion ul{margin:0;padding-left:18px}
+.ts-validacion a{color:#b42318;font-weight:700}
+.control-item.control-missing{background:#fff5f5;border-left:4px solid #b42318;padding-left:12px;border-radius:10px}
+.pend-badge{font-size:11px;font-weight:800;padding:6px 10px;border-radius:999px;background:var(--critical-soft);color:var(--critical);margin-left:8px}
+.pend-badge.pend-ok{background:var(--success-soft);color:var(--success)}

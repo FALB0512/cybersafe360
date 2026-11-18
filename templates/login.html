@@ -32,13 +32,7 @@
             <h2 class="mt-3 mb-1">Iniciar sesión</h2>
             <p class="text-secondary mb-0">Ingresa con tu correo y contraseña asignados.</p>
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} mt-3 mb-0">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
+            {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<span data-ts-flash="{{ category }}" hidden>{{ message }}</span>{% endfor %}{% endwith %}
 
             <form method="post" action="{{ url_for('login') }}" class="mt-4">
                 <label class="form-label">Correo</label>
@@ -66,5 +60,7 @@
         </div>
     </div>
 </div>
+<div id="tsToasts" class="ts-toasts" aria-live="polite"></div>
+<script src="{{ url_for('static', filename='js/ts.js') }}"></script>
 </body>
 </html>
