@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Metodología | TotalSecurity{% endblock %}
+{% block page_title %}Metodología del índice{% endblock %}
+{% block content %}
+<div class="section-actions">
+    <div>
+        <h5 class="mb-1">Configuración del diagnóstico</h5>
+        <div class="text-secondary small">Los cambios aplican a las evaluaciones nuevas. Las anteriores conservan la versión con la que se hicieron.</div>
+    </div>
+    <span class="status-badge">Versión vigente: {{ params.version }}</span>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="panel-card h-100">
+            <div class="panel-head"><div><h5>Puntajes y niveles</h5><div class="small text-secondary">Cómo se calcula el índice</div></div></div>
+            <form method="post" action="{{ url_for('guardar_parametros') }}">
+                <div class="row g-3">
+                    <div class="col-4"><label class="form-label">Puntos: Cumple</label><input type="number" min="0" max="100" name="puntos_cumple" class="form-control" value="{{ params.puntos[2] }}"></div>
+                    <div class="col-4"><label class="form-label">Puntos: Parcial</label><input type="number" min="0" max="100" name="puntos_parcial" class="form-control" value="{{ params.puntos[1] }}"></div>
+                    <div class="col-4"><label class="form-label">Puntos: No cumple</label><input type="number" min="0" max="100" name="puntos_no_cumple" class="form-control" value="{{ params.puntos[0] }}"></div>
+                </div>
+                <h6 class="fw-bold mt-4 mb-2">Límites de cada nivel (índice máximo)</h6>
+                <div class="row g-3">
+                    <div class="col-6"><label class="form-label">Crítico hasta</label><input type="number" min="0" max="99" name="umbral_critico" class="form-control" value="{{ params.umbrales[0] }}"></div>
+                    <div class="col-6"><label class="form-label">Bajo hasta</label><input type="number" min="0" max="99" name="umbral_bajo" class="form-control" value="{{ params.umbrales[1] }}"></div>
+                    <div class="col-6"><label class="form-label">Medio hasta</label><input type="number" min="0" max="99" name="umbral_medio" class="form-control" value="{{ params.umbrales[2] }}"></div>
+                    <div class="col-6"><label class="form-label">Alto hasta</label><input type="number" min="0" max="99" name="umbral_alto" class="form-control" value="{{ params.umbrales[3] }}"></div>
+                </div>
+                <div class="executive-note mt-3 small">
+                    Escala vigente: Crítico 0–{{ params.umbrales[0] }} · Bajo {{ params.umbrales[0] + 1 }}–{{ params.umbrales[1] }} · Medio {{ params.umbrales[1] + 1 }}–{{ params.umbrales[2] }} · Alto {{ params.umbrales[2] + 1 }}–{{ params.umbrales[3] }} · Fortalecido {{ params.umbrales[3] + 1 }}–100
+                </div>
+                <button class="btn btn-primary mt-3" data-confirm="Al publicar se crea una nueva versión de la metodología. Las evaluaciones anteriores no se recalculan. ¿Continuar?">Publicar nueva versión</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="panel-card h-100">
+            <div class="panel-head">
+                <div><h5>Dominios</h5><div class="small text-secondary">Orden y nombre en los formularios y reportes</div></div>
+                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modalDominioNuevo"><i class="bi bi-plus-lg me-1"></i>Nuevo</button>
+            </div>
+            <div class="table-responsive"><table class="table align-middle mb-0 modern-table">
+                <thead><tr><th>Orden</th><th>Dominio</th><th>Controles</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                {% for d in dominios %}
+                <tr>
+                    <td>{{ d['orden'] }}</td>
+                    <td><strong>{{ d['nombre'] }}</strong></td>
+                    <td>{{ controles_por_dominio.get(d['nombre'], [])|length }}</td>
+                    <td><span class="status-badge">{{ 'Activo' if d['activo'] else 'Inactivo' }}</span></td>
+                    <td class="text-nowrap">
+                        <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalDominio{{ d['id'] }}">Editar</button>
+                        <form method="post" action="{{ url_for('estado_dominio', dominio_id=d['id']) }}" class="d-inline" data-confirm="{{ '¿Desactivar este dominio? Sus controles dejarán de aparecer en nuevas evaluaciones.' if d['activo'] else '¿Activar este dominio?' }}">
+                            <button class="btn btn-sm btn-light">{{ 'Desactivar' if d['activo'] else 'Activar' }}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody></table></div>
+        </div>
+    </div>
+</div>
+
+<div class="section-actions">
+    <div><h5 class="mb-1">Controles</h5><div class="text-secondary small">Las preguntas y recomendaciones que se muestran en cada evaluación.</div></div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalControlNuevo"><i class="bi bi-plus-lg me-2"></i>Nuevo control</button>
+</div>
+
+{% for d in dominios %}
+<div class="panel-card p-0 overflow-hidden mb-4">
+    <div class="p-4 pb-2"><h5 class="mb-0 fw-bold">{{ d['nombre'] }}</h5></div>
+    <div class="table-responsive"><table class="table align-middle mb-0 modern-table">
+        <thead><tr><th>Pregunta</th><th>Recomendación</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+        {% for c in controles_por_dominio.get(d['nombre'], []) %}
+        <tr>
+            <td style="min-width:260px">{{ c['pregunta'] }}</td>
+            <td class="small text-secondary" style="min-width:260px">{{ c['recomendacion'] or 'Sin recomendación' }}</td>
+            <td><span class="status-badge">{{ 'Activo' if c['activo'] else 'Inactivo' }}</span></td>
+            <td class="text-nowrap">
+                <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalControl{{ c['id'] }}">Editar</button>
+                <form method="post" action="{{ url_for('estado_control', control_id=c['id']) }}" class="d-inline" data-confirm="{{ '¿Desactivar este control? Dejará de aparecer en nuevas evaluaciones y su historial se conserva.' if c['activo'] else '¿Activar este control?' }}">
+                    <button class="btn btn-sm btn-light">{{ 'Desactivar' if c['activo'] else 'Activar' }}</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-secondary">Este dominio no tiene controles.</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+</div>
+{% endfor %}
+
+{# Modal: nuevo dominio #}
+<div class="modal fade" id="modalDominioNuevo" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+<form method="post" action="{{ url_for('nuevo_dominio') }}">
+<div class="modal-header"><h5 class="modal-title">Nuevo dominio</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><label class="form-label">Nombre</label><input name="nombre" class="form-control" required></div>
+<div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Crear dominio</button></div>
+</form></div></div></div>
+
+{# Modales: editar dominio #}
+{% for d in dominios %}
+<div class="modal fade" id="modalDominio{{ d['id'] }}" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+<form method="post" action="{{ url_for('editar_dominio', dominio_id=d['id']) }}">
+<div class="modal-header"><h5 class="modal-title">Editar dominio</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body">
+    <div class="row g-3">
+        <div class="col-md-9"><label class="form-label">Nombre</label><input name="nombre" class="form-control" value="{{ d['nombre'] }}" required></div>
+        <div class="col-md-3"><label class="form-label">Orden</label><input type="number" min="1" name="orden" class="form-control" value="{{ d['orden'] }}"></div>
+    </div>
+    <div class="small text-secondary mt-2">Al cambiar el nombre, sus controles pasan al nuevo nombre.</div>
+</div>
+<div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar</button></div>
+</form></div></div></div>
+{% endfor %}
+
+{# Modal: nuevo control #}
+<div class="modal fade" id="modalControlNuevo" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+<form method="post" action="{{ url_for('nuevo_control') }}">
+<div class="modal-header"><h5 class="modal-title">Nuevo control</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><div class="row g-3">
+    <div class="col-12"><label class="form-label">Dominio</label>
+        <select name="dominio" class="form-select">{% for d in dominios %}<option value="{{ d['nombre'] }}">{{ d['nombre'] }}</option>{% endfor %}</select></div>
+    <div class="col-12"><label class="form-label">Pregunta</label><textarea name="pregunta" rows="2" class="form-control" required></textarea></div>
+    <div class="col-12"><label class="form-label">Recomendación si no cumple</label><textarea name="recomendacion" rows="3" class="form-control" required></textarea></div>
+</div></div>
+<div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Crear control</button></div>
+</form></div></div></div>
+
+{# Modales: editar control #}
+{% for d in dominios %}{% for c in controles_por_dominio.get(d['nombre'], []) %}
+<div class="modal fade" id="modalControl{{ c['id'] }}" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+<form method="post" action="{{ url_for('editar_control', control_id=c['id']) }}">
+<div class="modal-header"><h5 class="modal-title">Editar control</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><div class="row g-3">
+    <div class="col-12"><label class="form-label">Dominio</label>
+        <select name="dominio" class="form-select">{% for dd in dominios %}<option value="{{ dd['nombre'] }}" {% if dd['nombre'] == c['dominio'] %}selected{% endif %}>{{ dd['nombre'] }}</option>{% endfor %}</select></div>
+    <div class="col-12"><label class="form-label">Pregunta</label><textarea name="pregunta" rows="2" class="form-control" required>{{ c['pregunta'] }}</textarea></div>
+    <div class="col-12"><label class="form-label">Recomendación si no cumple</label><textarea name="recomendacion" rows="3" class="form-control" required>{{ c['recomendacion'] or '' }}</textarea></div>
+</div></div>
+<div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar</button></div>
+</form></div></div></div>
+{% endfor %}{% endfor %}
+{% endblock %}

@@ -27,6 +27,11 @@
     <div class="panel-head">
         <div><h5>Comparación con la evaluación anterior</h5><div class="small text-secondary">{{ comparacion['anterior']['fecha'] }} → {{ comparacion['actual']['fecha'] }}</div></div>
     </div>
+    {% if not comparacion['misma_version'] %}
+    <div class="small p-3 rounded-3 mb-3" style="background:#fff7dc;color:#8a6500">
+        Estas evaluaciones usan versiones distintas de la metodología (v{{ comparacion['anterior']['metodologia_version'] }} y v{{ comparacion['actual']['metodologia_version'] }}). La variación puede no ser comparable.
+    </div>
+    {% endif %}
     <div class="row g-4 align-items-center mb-3">
         <div class="col-md-4">
             <div class="small text-secondary">Índice</div>

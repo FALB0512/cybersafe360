@@ -119,11 +119,22 @@ def init_db():
         ("hallazgos", "evaluacion_id", "ALTER TABLE hallazgos ADD COLUMN evaluacion_id INTEGER"),
         ("hallazgos", "observacion_verificacion", "ALTER TABLE hallazgos ADD COLUMN observacion_verificacion TEXT"),
         ("hallazgos", "cumplimiento", "ALTER TABLE hallazgos ADD COLUMN cumplimiento TEXT"),
+        ("controles", "recomendacion", "ALTER TABLE controles ADD COLUMN recomendacion TEXT"),
+        ("evaluaciones", "metodologia_version", "ALTER TABLE evaluaciones ADD COLUMN metodologia_version INTEGER DEFAULT 1"),
     ]:
         cols = [r["name"] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
         if column not in cols:
             cur.execute(ddl)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS dominios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL UNIQUE,
+        orden INTEGER NOT NULL DEFAULT 0,
+        activo INTEGER NOT NULL DEFAULT 1
+    )
+    """)
+    cur.execute("CREATE TABLE IF NOT EXISTS parametros (clave TEXT PRIMARY KEY, valor TEXT NOT NULL)")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,6 +153,18 @@ def init_db():
 
     if cur.execute("SELECT COUNT(*) FROM controles").fetchone()[0] == 0:
         cur.executemany("INSERT INTO controles (dominio, pregunta, activo) VALUES (?, ?, 1)", CONTROLES_BASE)
+
+    if cur.execute("SELECT COUNT(*) FROM dominios").fetchone()[0] == 0:
+        nombres = list(dict.fromkeys(d for d, _ in CONTROLES_BASE))
+        cur.executemany("INSERT INTO dominios (nombre, orden, activo) VALUES (?, ?, 1)",
+                        [(n, i + 1) for i, n in enumerate(nombres)])
+    for pregunta, reco in RECOMENDACIONES_CONTROLES.items():
+        cur.execute("UPDATE controles SET recomendacion=? WHERE pregunta=? AND (recomendacion IS NULL OR recomendacion='')",
+                    (reco, pregunta))
+    for clave, valor in {"puntos_cumple": "2", "puntos_parcial": "1", "puntos_no_cumple": "0",
+                         "umbral_critico": "39", "umbral_bajo": "59", "umbral_medio": "74",
+                         "umbral_alto": "89", "version": "1"}.items():
+        cur.execute("INSERT OR IGNORE INTO parametros (clave, valor) VALUES (?, ?)", (clave, valor))
 
     if cur.execute("SELECT COUNT(*) FROM empresas").fetchone()[0] == 0:
         cur.execute("""
@@ -218,8 +241,6 @@ def init_db():
                           ORDER BY e2.fecha DESC, e2.id DESC LIMIT 1)
               AND r.control_id=hallazgos.control_id AND r.resultado>0)
     """)
-    for ev_id, puntaje in cur.execute("SELECT id, puntaje FROM evaluaciones").fetchall():
-        cur.execute("UPDATE evaluaciones SET nivel=? WHERE id=?", (nivel_desde_puntaje(puntaje), ev_id))
 
     conn.commit()
     conn.close()
@@ -250,16 +271,62 @@ def permisos():
     return {"puede_editar": rol in EDITORES, "es_admin": rol == "admin"}
 
 
-def nivel_desde_puntaje(puntaje):
-    if puntaje <= 39:
+CONSULTA_CONTROLES_ACTIVOS = """
+    SELECT c.* FROM controles c JOIN dominios d ON d.nombre=c.dominio
+    WHERE c.activo=1 AND d.activo=1 ORDER BY d.orden, c.id
+"""
+
+
+def get_parametros(conn):
+    p = {f["clave"]: f["valor"] for f in conn.execute("SELECT clave, valor FROM parametros").fetchall()}
+    return {
+        "puntos": {2: int(p["puntos_cumple"]), 1: int(p["puntos_parcial"]), 0: int(p["puntos_no_cumple"])},
+        "umbrales": [int(p["umbral_critico"]), int(p["umbral_bajo"]), int(p["umbral_medio"]), int(p["umbral_alto"])],
+        "version": int(p["version"]),
+    }
+
+
+def parametros_publicos():
+    conn = get_db()
+    params = get_parametros(conn)
+    conn.close()
+    return {"cumple": params["puntos"][2], "parcial": params["puntos"][1], "no": params["puntos"][0]}
+
+
+def nivel_desde_puntaje(puntaje, umbrales):
+    crit, bajo, medio, alto = umbrales
+    if puntaje <= crit:
         return "Crítico"
-    elif puntaje <= 59:
+    elif puntaje <= bajo:
         return "Bajo"
-    elif puntaje <= 74:
+    elif puntaje <= medio:
         return "Medio"
-    elif puntaje <= 89:
+    elif puntaje <= alto:
         return "Alto"
     return "Fortalecido"
+
+
+def puntaje_desde_resultados(resultados, puntos):
+    if not resultados:
+        return 0
+    maximo = max(puntos.values())
+    return round(100 * sum(puntos[r] for r in resultados) / (len(resultados) * maximo))
+
+
+def porcentaje_por_dominio(conn, evaluacion_id, puntos):
+    """Lista (dominio, porcentaje, controles) en el orden configurado."""
+    acumulado = {}
+    for f in conn.execute("""
+        SELECT c.dominio, r.resultado FROM respuestas r JOIN controles c ON c.id=r.control_id
+        WHERE r.evaluacion_id=?
+    """, (evaluacion_id,)).fetchall():
+        acumulado.setdefault(f["dominio"], []).append(f["resultado"])
+    resultado = []
+    for d in conn.execute("SELECT nombre FROM dominios ORDER BY orden, id").fetchall():
+        if d["nombre"] in acumulado:
+            res = acumulado[d["nombre"]]
+            resultado.append((d["nombre"], puntaje_desde_resultados(res, puntos), len(res)))
+    return resultado
 
 
 def criticidad_desde_riesgo(riesgo):
@@ -337,21 +404,12 @@ def dashboard():
         WHERE empresa_id=? AND criticidad IN ('Crítico','Alto') AND estado='Cerrado'
     """, (empresa["id"],)).fetchone()["c"]
 
+    params = get_parametros(conn)
     dominios = []
     if ultima:
-        rows = conn.execute("""
-            SELECT c.dominio,
-                   ROUND(100.0 * SUM(r.resultado) / (COUNT(*) * 2), 0) AS pct
-            FROM respuestas r
-            JOIN controles c ON c.id=r.control_id
-            WHERE r.evaluacion_id=?
-            GROUP BY c.dominio
-            ORDER BY c.id
-        """, (ultima["id"],)).fetchall()
-        dominios = [(r["dominio"], int(r["pct"])) for r in rows]
-
+        dominios = [(d, pct) for d, pct, _ in porcentaje_por_dominio(conn, ultima["id"], params["puntos"])]
     if not dominios:
-        dominios = [(d, 0) for d in dict.fromkeys(dom for dom, _ in CONTROLES_BASE)]
+        dominios = [(x["nombre"], 0) for x in conn.execute("SELECT nombre FROM dominios WHERE activo=1 ORDER BY orden, id").fetchall()]
 
     conn.close()
     return render_template(
@@ -536,7 +594,7 @@ def evaluaciones():
 def nueva_evaluacion_form():
     conn = get_db()
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
-    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    controles = conn.execute(CONSULTA_CONTROLES_ACTIVOS).fetchall()
     conn.close()
 
     agrupados = {}
@@ -544,7 +602,7 @@ def nueva_evaluacion_form():
         agrupados.setdefault(c["dominio"], []).append(c)
     return render_template(
         "evaluacion_form.html", empresas=empresas_data, grupos=agrupados,
-        evaluacion=None, respuestas={}, action=url_for("guardar_evaluacion")
+        evaluacion=None, respuestas={}, action=url_for("guardar_evaluacion"), pts=parametros_publicos()
     )
 
 
@@ -563,14 +621,11 @@ def historial():
             "SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha DESC, id DESC", (empresa["id"],)
         ).fetchall()
 
+    params = get_parametros(conn)
     dominios_por_eval = {}
     for ev in evaluaciones_emp[:2]:
-        filas = conn.execute("""
-            SELECT c.dominio, ROUND(100.0 * SUM(r.resultado) / (COUNT(*) * 2), 0) AS pct
-            FROM respuestas r JOIN controles c ON c.id=r.control_id
-            WHERE r.evaluacion_id=? GROUP BY c.dominio
-        """, (ev["id"],)).fetchall()
-        dominios_por_eval[ev["id"]] = {f["dominio"]: int(f["pct"]) for f in filas}
+        dominios_por_eval[ev["id"]] = {d: pct for d, pct, _ in porcentaje_por_dominio(conn, ev["id"], params["puntos"])}
+    nombres_dom = [x["nombre"] for x in conn.execute("SELECT nombre FROM dominios ORDER BY orden, id").fetchall()]
     conn.close()
 
     historial_items = []
@@ -586,7 +641,7 @@ def historial():
         dom_ant = dominios_por_eval[anterior["id"]]
         dominios = [
             (d, dom_ant.get(d, 0), dom_act.get(d, 0), dom_act.get(d, 0) - dom_ant.get(d, 0))
-            for d in dict.fromkeys(dom for dom, _ in CONTROLES_BASE)
+            for d in nombres_dom
         ]
         comparacion = {
             "actual": actual, "anterior": anterior, "delta": delta,
@@ -594,6 +649,7 @@ def historial():
             "dominios": dominios,
             "desde_inicio": evaluaciones_emp[0]["puntaje"] - evaluaciones_emp[-1]["puntaje"],
             "primera": evaluaciones_emp[-1],
+            "misma_version": actual["metodologia_version"] == anterior["metodologia_version"],
         }
 
     return render_template(
@@ -648,10 +704,7 @@ def sincronizar_hallazgos(cur, empresa_id, evaluacion_id, respuestas, controles_
                 f"Durante la evaluación del {hoy} se registró 'No cumple' para el control del dominio {control['dominio']}. "
                 + (f"Observación: {observacion}" if observacion else ""),
                 prob, impacto, riesgo, criticidad_desde_riesgo(riesgo),
-                RECOMENDACIONES_CONTROLES.get(
-                    control["pregunta"],
-                    "Definir una acción correctiva, responsable y fecha de implementación."
-                ),
+                control["recomendacion"] or "Definir una acción correctiva, responsable y fecha de implementación.",
                 control_id, evaluacion_id
             ))
         elif resultado > 0 and abierto is not None:
@@ -671,7 +724,7 @@ def editar_evaluacion(evaluacion_id):
         flash("La evaluación no existe.", "danger")
         return redirect(url_for("evaluaciones"))
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
-    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    controles = conn.execute(CONSULTA_CONTROLES_ACTIVOS).fetchall()
     filas = conn.execute(
         "SELECT control_id, resultado, observacion FROM respuestas WHERE evaluacion_id=?", (evaluacion_id,)
     ).fetchall()
@@ -683,7 +736,8 @@ def editar_evaluacion(evaluacion_id):
     respuestas = {f["control_id"]: {"resultado": f["resultado"], "observacion": f["observacion"] or ""} for f in filas}
     return render_template(
         "evaluacion_form.html", empresas=empresas_data, grupos=agrupados, evaluacion=ev,
-        respuestas=respuestas, action=url_for("actualizar_evaluacion", evaluacion_id=evaluacion_id)
+        respuestas=respuestas, action=url_for("actualizar_evaluacion", evaluacion_id=evaluacion_id),
+        pts=parametros_publicos()
     )
 
 
@@ -697,7 +751,7 @@ def actualizar_evaluacion(evaluacion_id):
         flash("La evaluación no existe.", "danger")
         return redirect(url_for("evaluaciones"))
 
-    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    controles = conn.execute(CONSULTA_CONTROLES_ACTIVOS).fetchall()
     error = validar_evaluacion(request.form, controles, exige_empresa=False)
     if error:
         conn.close()
@@ -711,14 +765,15 @@ def actualizar_evaluacion(evaluacion_id):
         total += resultado
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
 
-    puntaje = round((total / (len(respuestas) * 2)) * 100)
-    nivel = nivel_desde_puntaje(puntaje)
+    params = get_parametros(conn)
+    puntaje = puntaje_desde_resultados([r for _, r, _ in respuestas], params["puntos"])
+    nivel = nivel_desde_puntaje(puntaje, params["umbrales"])
     hoy = date.today().isoformat()
     cur = conn.cursor()
     cur.execute("DELETE FROM respuestas WHERE evaluacion_id=?", (evaluacion_id,))
     cur.execute("""
-        UPDATE evaluaciones SET fecha=?, puntaje=?, nivel=?, observacion=? WHERE id=?
-    """, (fecha_eval, puntaje, nivel, f"Editada el {hoy} por {session['user']['name']}", evaluacion_id))
+        UPDATE evaluaciones SET fecha=?, puntaje=?, nivel=?, observacion=?, metodologia_version=? WHERE id=?
+    """, (fecha_eval, puntaje, nivel, f"Editada el {hoy} por {session['user']['name']}", params["version"], evaluacion_id))
     for control_id, resultado, observacion in respuestas:
         cur.execute("""
             INSERT INTO respuestas (evaluacion_id, control_id, resultado, observacion)
@@ -738,7 +793,7 @@ def actualizar_evaluacion(evaluacion_id):
 @roles_required(*EDITORES)
 def guardar_evaluacion():
     conn = get_db()
-    controles = conn.execute("SELECT * FROM controles WHERE activo=1 ORDER BY id").fetchall()
+    controles = conn.execute(CONSULTA_CONTROLES_ACTIVOS).fetchall()
     error = validar_evaluacion(request.form, controles, exige_empresa=True)
     if error:
         conn.close()
@@ -755,16 +810,16 @@ def guardar_evaluacion():
         respuestas.append((c["id"], resultado, request.form.get(f"obs_{c['id']}", "").strip()))
 
     no_respondidos = len(controles) - len(respuestas)
-    maximo = len(respuestas) * 2
-    puntaje = round((total / maximo) * 100)
-    nivel = nivel_desde_puntaje(puntaje)
+    params = get_parametros(conn)
+    puntaje = puntaje_desde_resultados([r for _, r, _ in respuestas], params["puntos"])
+    nivel = nivel_desde_puntaje(puntaje, params["umbrales"])
 
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO evaluaciones (empresa_id, fecha, puntaje, nivel, responsable, observacion)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO evaluaciones (empresa_id, fecha, puntaje, nivel, responsable, observacion, metodologia_version)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (empresa_id, fecha_eval, puntaje, nivel, session["user"]["name"],
-          "Puntaje calculado automáticamente a partir de controles"))
+          "Puntaje calculado automáticamente a partir de controles", params["version"]))
     evaluacion_id = cur.lastrowid
 
     for control_id, resultado, observacion in respuestas:
@@ -794,17 +849,8 @@ def resultado_evaluacion(evaluacion_id):
         WHERE e.id=?
     """, (evaluacion_id,)).fetchone()
 
-    dominios = conn.execute("""
-        SELECT c.dominio,
-               COUNT(*) total_controles,
-               SUM(r.resultado) puntos,
-               ROUND(100.0 * SUM(r.resultado) / (COUNT(*) * 2), 0) pct
-        FROM respuestas r
-        JOIN controles c ON c.id=r.control_id
-        WHERE r.evaluacion_id=?
-        GROUP BY c.dominio
-        ORDER BY MIN(c.id)
-    """, (evaluacion_id,)).fetchall()
+    params = get_parametros(conn)
+    dominios = [{"dominio": d, "pct": pct} for d, pct, _ in porcentaje_por_dominio(conn, evaluacion_id, params["puntos"])]
 
     no_cumple = conn.execute("""
         SELECT c.dominio, c.pregunta, r.observacion
@@ -997,6 +1043,163 @@ def nuevo_usuario():
         conn.close()
     return redirect(url_for("usuarios"))
 
+
+@app.route("/metodologia")
+@roles_required("admin")
+def metodologia():
+    conn = get_db()
+    params = get_parametros(conn)
+    dominios_data = conn.execute("SELECT * FROM dominios ORDER BY orden, id").fetchall()
+    controles_data = conn.execute("SELECT * FROM controles ORDER BY id").fetchall()
+    conn.close()
+    por_dominio = {}
+    for c in controles_data:
+        por_dominio.setdefault(c["dominio"], []).append(c)
+    return render_template("metodologia.html", params=params, dominios=dominios_data,
+                           controles_por_dominio=por_dominio)
+
+
+@app.route("/metodologia/parametros", methods=["POST"])
+@roles_required("admin")
+def guardar_parametros():
+    try:
+        puntos = [int(request.form[k]) for k in ("puntos_cumple", "puntos_parcial", "puntos_no_cumple")]
+        umbrales = [int(request.form[k]) for k in ("umbral_critico", "umbral_bajo", "umbral_medio", "umbral_alto")]
+    except (KeyError, ValueError):
+        flash("Revisa los valores: todos deben ser números enteros.", "danger")
+        return redirect(url_for("metodologia"))
+    cumple, parcial, no = puntos
+    if not (0 <= no < parcial < cumple <= 100):
+        flash("Los puntos deben cumplir: No cumple < Parcial < Cumple (máximo 100).", "danger")
+        return redirect(url_for("metodologia"))
+    if not (0 <= umbrales[0] < umbrales[1] < umbrales[2] < umbrales[3] < 100):
+        flash("Los niveles deben ir en orden creciente y ser menores que 100.", "danger")
+        return redirect(url_for("metodologia"))
+
+    conn = get_db()
+    actual = get_parametros(conn)
+    if [actual["puntos"][2], actual["puntos"][1], actual["puntos"][0]] == puntos and actual["umbrales"] == umbrales:
+        conn.close()
+        flash("No hay cambios en la metodología.", "info")
+        return redirect(url_for("metodologia"))
+    nueva = actual["version"] + 1
+    valores = {"puntos_cumple": cumple, "puntos_parcial": parcial, "puntos_no_cumple": no,
+               "umbral_critico": umbrales[0], "umbral_bajo": umbrales[1],
+               "umbral_medio": umbrales[2], "umbral_alto": umbrales[3], "version": nueva}
+    for clave, valor in valores.items():
+        conn.execute("UPDATE parametros SET valor=? WHERE clave=?", (str(valor), clave))
+    conn.commit()
+    conn.close()
+    flash(f"Metodología publicada como versión {nueva}. Las nuevas evaluaciones usarán estos valores.", "success")
+    return redirect(url_for("metodologia"))
+
+
+@app.route("/metodologia/dominios/nuevo", methods=["POST"])
+@roles_required("admin")
+def nuevo_dominio():
+    nombre = request.form.get("nombre", "").strip()
+    if not nombre:
+        flash("El nombre del dominio es obligatorio.", "danger")
+        return redirect(url_for("metodologia"))
+    conn = get_db()
+    orden = conn.execute("SELECT COALESCE(MAX(orden), 0) + 1 FROM dominios").fetchone()[0]
+    try:
+        conn.execute("INSERT INTO dominios (nombre, orden, activo) VALUES (?, ?, 1)", (nombre, orden))
+        conn.commit()
+        flash(f"Dominio «{nombre}» creado.", "success")
+    except sqlite3.IntegrityError:
+        flash("Ya existe un dominio con ese nombre.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("metodologia"))
+
+
+@app.route("/metodologia/dominios/<int:dominio_id>/editar", methods=["POST"])
+@roles_required("admin")
+def editar_dominio(dominio_id):
+    nombre = request.form.get("nombre", "").strip()
+    try:
+        orden = int(request.form.get("orden", "0"))
+    except ValueError:
+        orden = 0
+    if not nombre:
+        flash("El nombre del dominio es obligatorio.", "danger")
+        return redirect(url_for("metodologia"))
+    conn = get_db()
+    dom = conn.execute("SELECT * FROM dominios WHERE id=?", (dominio_id,)).fetchone()
+    if not dom:
+        conn.close()
+        flash("El dominio no existe.", "danger")
+        return redirect(url_for("metodologia"))
+    try:
+        conn.execute("UPDATE dominios SET nombre=?, orden=? WHERE id=?", (nombre, orden, dominio_id))
+        if nombre != dom["nombre"]:
+            conn.execute("UPDATE controles SET dominio=? WHERE dominio=?", (nombre, dom["nombre"]))
+        conn.commit()
+        flash("Dominio actualizado.", "success")
+    except sqlite3.IntegrityError:
+        flash("Ya existe un dominio con ese nombre.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("metodologia"))
+
+
+@app.route("/metodologia/dominios/<int:dominio_id>/estado", methods=["POST"])
+@roles_required("admin")
+def estado_dominio(dominio_id):
+    conn = get_db()
+    conn.execute("UPDATE dominios SET activo=1-activo WHERE id=?", (dominio_id,))
+    conn.commit()
+    conn.close()
+    flash("Estado del dominio actualizado. Solo los dominios activos aparecen en nuevas evaluaciones.", "success")
+    return redirect(url_for("metodologia"))
+
+
+@app.route("/metodologia/controles/nuevo", methods=["POST"])
+@roles_required("admin")
+def nuevo_control():
+    dominio = request.form.get("dominio", "").strip()
+    pregunta = request.form.get("pregunta", "").strip()
+    recomendacion = request.form.get("recomendacion", "").strip()
+    if not (dominio and pregunta and recomendacion):
+        flash("Completa dominio, pregunta y recomendación del control.", "danger")
+        return redirect(url_for("metodologia"))
+    conn = get_db()
+    conn.execute("INSERT INTO controles (dominio, pregunta, activo, recomendacion) VALUES (?, ?, 1, ?)",
+                 (dominio, pregunta, recomendacion))
+    conn.commit()
+    conn.close()
+    flash("Control agregado.", "success")
+    return redirect(url_for("metodologia"))
+
+
+@app.route("/metodologia/controles/<int:control_id>/editar", methods=["POST"])
+@roles_required("admin")
+def editar_control(control_id):
+    dominio = request.form.get("dominio", "").strip()
+    pregunta = request.form.get("pregunta", "").strip()
+    recomendacion = request.form.get("recomendacion", "").strip()
+    if not (dominio and pregunta and recomendacion):
+        flash("Completa dominio, pregunta y recomendación del control.", "danger")
+        return redirect(url_for("metodologia"))
+    conn = get_db()
+    conn.execute("UPDATE controles SET dominio=?, pregunta=?, recomendacion=? WHERE id=?",
+                 (dominio, pregunta, recomendacion, control_id))
+    conn.commit()
+    conn.close()
+    flash("Control actualizado.", "success")
+    return redirect(url_for("metodologia"))
+
+
+@app.route("/metodologia/controles/<int:control_id>/estado", methods=["POST"])
+@roles_required("admin")
+def estado_control(control_id):
+    conn = get_db()
+    conn.execute("UPDATE controles SET activo=1-activo WHERE id=?", (control_id,))
+    conn.commit()
+    conn.close()
+    flash("Estado del control actualizado. Su historial se conserva.", "success")
+    return redirect(url_for("metodologia"))
 
 init_db()
 
