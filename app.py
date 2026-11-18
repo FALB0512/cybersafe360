@@ -389,6 +389,9 @@ def dashboard():
     if not empresa:
         empresa = conn.execute("SELECT * FROM empresas ORDER BY id LIMIT 1").fetchone()
     empresas_data = conn.execute("SELECT * FROM empresas ORDER BY razon_social").fetchall()
+    if not empresa:
+        conn.close()
+        return render_template("sin_empresa.html", puede_registrar=session["user"]["rol"] in EDITORES)
     evaluaciones = conn.execute("""
         SELECT * FROM evaluaciones WHERE empresa_id=? ORDER BY fecha, id
     """, (empresa["id"],)).fetchall()
