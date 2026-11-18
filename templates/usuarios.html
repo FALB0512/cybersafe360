@@ -6,7 +6,7 @@
     <div class="profile-card">
         <span class="status-badge">Administrador</span>
         <h6 class="mt-2">Control total</h6>
-        <ul><li>Crea y gestiona usuarios</li><li>Empresas y evaluaciones</li><li>Hallazgos y plan de acción</li></ul>
+        <ul><li>Crea, edita, activa o elimina usuarios</li><li>Empresas, evaluaciones y metodología</li><li>Hallazgos y plan de acción</li></ul>
     </div>
     <div class="profile-card">
         <span class="status-badge">Consultor</span>
@@ -27,18 +27,32 @@
 
 <div class="panel-card p-0 overflow-hidden">
 <div class="table-responsive"><table class="table align-middle mb-0 modern-table">
-<thead><tr><th>Nombre</th><th>Correo</th><th>Perfil</th><th>Estado</th></tr></thead>
+<thead><tr><th>Nombre</th><th>Correo</th><th>Perfil</th><th>Estado</th><th></th></tr></thead>
 <tbody>
 {% for u in usuarios %}
 <tr>
-    <td><strong>{{ u['nombre'] }}</strong></td>
+    <td><strong>{{ u['nombre'] }}</strong>{% if u['id'] == session['user']['id'] %} <span class="small text-secondary">(tú)</span>{% endif %}</td>
     <td>{{ u['correo'] }}</td>
     <td><span class="status-badge">{{ roles[u['rol']] }}</span></td>
-    <td>{{ 'Activo' if u['activo'] else 'Inactivo' }}</td>
+    <td>{% if u['activo'] %}<span class="status-badge">Activo</span>{% else %}<span class="risk-pill risk-sin-datos">Inactivo</span>{% endif %}</td>
+    <td class="text-nowrap">
+        <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#usuarioEdit{{ u['id'] }}">Editar</button>
+        {% if u['id'] != session['user']['id'] %}
+        <form method="post" action="{{ url_for('estado_usuario', usuario_id=u['id']) }}" class="d-inline"
+              data-confirm="{{ '¿Desactivar a este usuario? Perderá el acceso de inmediato.' if u['activo'] else '¿Activar a este usuario?' }}">
+            <button class="btn btn-sm btn-light">{{ 'Desactivar' if u['activo'] else 'Activar' }}</button>
+        </form>
+        <form method="post" action="{{ url_for('eliminar_usuario', usuario_id=u['id']) }}" class="d-inline"
+              data-confirm="¿Eliminar a «{{ u['nombre'] }}»? Esta acción no se puede deshacer.">
+            <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+        </form>
+        {% endif %}
+    </td>
 </tr>
 {% endfor %}
 </tbody></table></div></div>
 
+{# Modal: nuevo usuario #}
 <div class="modal fade" id="usuarioModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
 <form method="post" action="{{ url_for('nuevo_usuario') }}">
 <div class="modal-header"><h5 class="modal-title">Nuevo usuario</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
@@ -53,4 +67,22 @@
 </div></div>
 <div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Crear usuario</button></div>
 </form></div></div></div>
+
+{# Modales: editar usuario #}
+{% for u in usuarios %}
+<div class="modal fade" id="usuarioEdit{{ u['id'] }}" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+<form method="post" action="{{ url_for('editar_usuario', usuario_id=u['id']) }}">
+<div class="modal-header"><h5 class="modal-title">Editar usuario</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+<div class="modal-body"><div class="row g-3">
+<div class="col-12"><label class="form-label">Nombre completo</label><input name="nombre" class="form-control" value="{{ u['nombre'] }}" required></div>
+<div class="col-12"><label class="form-label">Correo</label><input type="email" name="correo" class="form-control" value="{{ u['correo'] }}" required></div>
+<div class="col-12"><label class="form-label">Perfil</label>
+<select name="rol" class="form-select" required>
+{% for clave, nombre in roles.items() %}<option value="{{ clave }}" {% if clave == u['rol'] %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+</select></div>
+<div class="col-12"><label class="form-label">Nueva contraseña (opcional)</label><input type="password" name="password" minlength="8" class="form-control" placeholder="Déjala vacía para no cambiarla"></div>
+</div></div>
+<div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary">Guardar cambios</button></div>
+</form></div></div></div>
+{% endfor %}
 {% endblock %}

@@ -253,6 +253,16 @@ def roles_required(*roles):
             user = session.get("user")
             if not user:
                 return redirect(url_for("login"))
+            conn = get_db()
+            vigente = conn.execute("SELECT rol, activo FROM usuarios WHERE id=?", (user["id"],)).fetchone()
+            conn.close()
+            if not vigente or not vigente["activo"]:
+                session.clear()
+                flash("Tu cuenta está desactivada o ya no existe.", "danger")
+                return redirect(url_for("login"))
+            if vigente["rol"] != user["rol"]:
+                user = {**user, "rol": vigente["rol"], "role": ROLES[vigente["rol"]]}
+                session["user"] = user
             if roles and user["rol"] not in roles:
                 flash("Tu perfil no tiene acceso a esta sección.", "danger")
                 return redirect(url_for("dashboard"))
@@ -1200,6 +1210,93 @@ def estado_control(control_id):
     conn.close()
     flash("Estado del control actualizado. Su historial se conserva.", "success")
     return redirect(url_for("metodologia"))
+
+def _otros_admins_activos(conn, usuario_id):
+    return conn.execute(
+        "SELECT COUNT(*) FROM usuarios WHERE rol='admin' AND activo=1 AND id<>?", (usuario_id,)
+    ).fetchone()[0]
+
+
+@app.route("/usuarios/<int:usuario_id>/editar", methods=["POST"])
+@roles_required("admin")
+def editar_usuario(usuario_id):
+    nombre = request.form.get("nombre", "").strip()
+    correo = request.form.get("correo", "").strip().lower()
+    rol = request.form.get("rol", "")
+    password = request.form.get("password", "")
+    if not (nombre and correo and rol in ROLES):
+        flash("Revisa nombre, correo y perfil del usuario.", "danger")
+        return redirect(url_for("usuarios"))
+    if password and len(password) < 8:
+        flash("La nueva contraseña debe tener mínimo 8 caracteres.", "danger")
+        return redirect(url_for("usuarios"))
+    conn = get_db()
+    u = conn.execute("SELECT * FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
+    if not u:
+        conn.close()
+        flash("El usuario no existe.", "danger")
+        return redirect(url_for("usuarios"))
+    if u["rol"] == "admin" and rol != "admin" and u["activo"] and _otros_admins_activos(conn, usuario_id) == 0:
+        conn.close()
+        flash("Debe quedar al menos un administrador activo.", "danger")
+        return redirect(url_for("usuarios"))
+    try:
+        conn.execute("UPDATE usuarios SET nombre=?, correo=?, rol=? WHERE id=?", (nombre, correo, rol, usuario_id))
+        if password:
+            conn.execute("UPDATE usuarios SET password_hash=? WHERE id=?", (generate_password_hash(password), usuario_id))
+        conn.commit()
+        flash("Usuario actualizado correctamente.", "success")
+    except sqlite3.IntegrityError:
+        flash("Ya existe otro usuario con ese correo.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("usuarios"))
+
+
+@app.route("/usuarios/<int:usuario_id>/estado", methods=["POST"])
+@roles_required("admin")
+def estado_usuario(usuario_id):
+    if usuario_id == session["user"]["id"]:
+        flash("No puedes desactivar tu propia cuenta.", "danger")
+        return redirect(url_for("usuarios"))
+    conn = get_db()
+    u = conn.execute("SELECT * FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
+    if not u:
+        conn.close()
+        flash("El usuario no existe.", "danger")
+        return redirect(url_for("usuarios"))
+    if u["activo"] and u["rol"] == "admin" and _otros_admins_activos(conn, usuario_id) == 0:
+        conn.close()
+        flash("Debe quedar al menos un administrador activo.", "danger")
+        return redirect(url_for("usuarios"))
+    conn.execute("UPDATE usuarios SET activo=1-activo WHERE id=?", (usuario_id,))
+    conn.commit()
+    conn.close()
+    flash("Usuario activado." if not u["activo"] else "Usuario desactivado. Perderá el acceso de inmediato.", "success")
+    return redirect(url_for("usuarios"))
+
+
+@app.route("/usuarios/<int:usuario_id>/eliminar", methods=["POST"])
+@roles_required("admin")
+def eliminar_usuario(usuario_id):
+    if usuario_id == session["user"]["id"]:
+        flash("No puedes eliminar tu propia cuenta.", "danger")
+        return redirect(url_for("usuarios"))
+    conn = get_db()
+    u = conn.execute("SELECT * FROM usuarios WHERE id=?", (usuario_id,)).fetchone()
+    if not u:
+        conn.close()
+        flash("El usuario no existe.", "danger")
+        return redirect(url_for("usuarios"))
+    if u["activo"] and u["rol"] == "admin" and _otros_admins_activos(conn, usuario_id) == 0:
+        conn.close()
+        flash("Debe quedar al menos un administrador activo.", "danger")
+        return redirect(url_for("usuarios"))
+    conn.execute("DELETE FROM usuarios WHERE id=?", (usuario_id,))
+    conn.commit()
+    conn.close()
+    flash(f"Usuario «{u['nombre']}» eliminado.", "success")
+    return redirect(url_for("usuarios"))
 
 init_db()
 
