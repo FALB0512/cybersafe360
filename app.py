@@ -209,6 +209,9 @@ def init_db():
         VALUES (?, ?, ?, ?, ?, ?)
         """, planes)
 
+    for ev_id, puntaje in cur.execute("SELECT id, puntaje FROM evaluaciones").fetchall():
+        cur.execute("UPDATE evaluaciones SET nivel=? WHERE id=?", (nivel_desde_puntaje(puntaje), ev_id))
+
     conn.commit()
     conn.close()
 
@@ -242,11 +245,11 @@ def nivel_desde_puntaje(puntaje):
     if puntaje <= 39:
         return "Crítico"
     elif puntaje <= 59:
-        return "Alto"
-    elif puntaje <= 79:
+        return "Bajo"
+    elif puntaje <= 74:
         return "Medio"
     elif puntaje <= 89:
-        return "Aceptable"
+        return "Alto"
     return "Fortalecido"
 
 

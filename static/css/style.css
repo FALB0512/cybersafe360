@@ -69,9 +69,9 @@ a{color:var(--blue)}
 .score-label{color:var(--muted);font-size:13px;margin-bottom:16px}
 .risk-pill{display:inline-flex;align-items:center;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:800}
 .risk-critico{background:var(--critical-soft);color:var(--critical)}
-.risk-alto{background:var(--high-soft);color:var(--high)}
+.risk-bajo{background:var(--high-soft);color:var(--high)}
 .risk-medio{background:var(--medium-soft);color:var(--medium)}
-.risk-aceptable,.risk-fortalecido,.risk-bajo{background:var(--success-soft);color:var(--success)}
+.risk-alto,.risk-fortalecido{background:var(--success-soft);color:var(--success)}
 .metric-card{padding:20px;display:flex;align-items:center;gap:14px;height:100%}
 .metric-icon{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:20px;background:var(--primary-soft);color:var(--blue);flex-shrink:0}
 .metric-critical .metric-icon{background:var(--critical-soft);color:var(--critical)}
